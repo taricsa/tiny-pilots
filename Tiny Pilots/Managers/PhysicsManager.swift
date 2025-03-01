@@ -109,6 +109,60 @@ class PhysicsManager {
         if thrustAmount > 0 {
             airplane.applyThrust(amount: thrustAmount)
         }
+        
+        // Apply additional control refinements
+        applyAdvancedFlightControls(airplane: airplane, motion: motion)
+    }
+    
+    /// Apply advanced flight controls for more nuanced airplane handling
+    private func applyAdvancedFlightControls(airplane: PaperAirplane, motion: CMDeviceMotion) {
+        // Get the airplane's physics body
+        guard let physicsBody = airplane.node.physicsBody else { return }
+        
+        // Get current velocity
+        let velocity = physicsBody.velocity
+        let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
+        
+        // Get device orientation
+        let attitude = motion.attitude
+        
+        // Calculate yaw (rotation around vertical axis) from device motion
+        let yaw = attitude.yaw
+        
+        // Apply subtle yaw control for turning
+        // This creates more realistic banking turns
+        if abs(yaw) > 0.1 {
+            let yawForce = CGFloat(yaw) * GameConfig.Controls.tiltSensitivity * 2.0
+            
+            // Apply force perpendicular to current direction of travel
+            let perpForce = CGVector(
+                dx: -velocity.dy * yawForce / max(speed, 1.0),
+                dy: velocity.dx * yawForce / max(speed, 1.0)
+            )
+            
+            physicsBody.applyForce(perpForce)
+        }
+        
+        // Apply stabilization at higher speeds
+        // This makes the airplane more stable as it gains speed
+        if speed > airplane.minSpeed * 2 {
+            // Get current rotation
+            let currentRotation = airplane.node.zRotation
+            
+            // Calculate ideal rotation based on velocity direction
+            let idealRotation = atan2(velocity.dy, velocity.dx)
+            
+            // Calculate difference
+            var rotationDiff = idealRotation - currentRotation
+            
+            // Normalize to [-π, π]
+            while rotationDiff > .pi { rotationDiff -= 2 * .pi }
+            while rotationDiff < -.pi { rotationDiff += 2 * .pi }
+            
+            // Apply stabilizing torque proportional to speed
+            let stabilizationFactor = min(1.0, (speed - airplane.minSpeed) / airplane.minSpeed) * 0.1
+            physicsBody.applyTorque(rotationDiff * stabilizationFactor)
+        }
     }
     
     // MARK: - Physics Simulation
@@ -182,6 +236,34 @@ class PhysicsManager {
         )
         
         physicsBody.applyForce(windEffect)
+        
+        // Apply turbulence effect for more realistic wind
+        applyTurbulence(to: airplane)
+    }
+    
+    /// Apply random turbulence to simulate air pockets and wind gusts
+    private func applyTurbulence(to airplane: PaperAirplane) {
+        guard let physicsBody = airplane.node.physicsBody else { return }
+        
+        // Only apply turbulence occasionally (5% chance per update)
+        if Int.random(in: 0...100) < 5 {
+            // Calculate turbulence strength based on wind strength
+            let windStrength = windVector.length ?? 0
+            let turbulenceStrength = windStrength * 0.2
+            
+            // Apply random force in random direction
+            let randomAngle = CGFloat.random(in: 0...(2 * .pi))
+            let turbulenceForce = CGVector(
+                dx: cos(randomAngle) * turbulenceStrength,
+                dy: sin(randomAngle) * turbulenceStrength
+            )
+            
+            physicsBody.applyForce(turbulenceForce)
+            
+            // Apply small random torque for rotation effect
+            let randomTorque = CGFloat.random(in: -0.5...0.5) * turbulenceStrength * 0.1
+            physicsBody.applyTorque(randomTorque)
+        }
     }
     
     /// Update wind strength and direction randomly to create natural variation

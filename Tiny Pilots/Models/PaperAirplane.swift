@@ -216,6 +216,66 @@ class PaperAirplane {
                                 dy: liftDirection.dy * liftCoefficient * speedFactor * 10)
         
         node.physicsBody?.applyForce(liftForce)
+        
+        // Apply additional aerodynamic effects
+        applyAerodynamicEffects(velocity: currentVelocity, speedFactor: speedFactor)
+    }
+    
+    /// Apply additional aerodynamic effects for more realistic flight
+    private func applyAerodynamicEffects(velocity: CGVector, speedFactor: CGFloat) {
+        guard let physicsBody = node.physicsBody else { return }
+        
+        // Calculate angle of attack (difference between airplane orientation and velocity direction)
+        let velocityAngle = atan2(velocity.dy, velocity.dx)
+        let airplaneAngle = node.zRotation
+        var angleOfAttack = airplaneAngle - velocityAngle
+        
+        // Normalize to [-π, π]
+        while angleOfAttack > .pi { angleOfAttack -= 2 * .pi }
+        while angleOfAttack < -.pi { angleOfAttack += 2 * .pi }
+        
+        // Calculate stall factor - high angles of attack cause stalling
+        let stallAngle: CGFloat = .pi / 6 // 30 degrees
+        let stallFactor: CGFloat
+        
+        if abs(angleOfAttack) < stallAngle {
+            // Normal flight - full lift
+            stallFactor = 1.0
+        } else {
+            // Stalling - reduced lift based on how far beyond stall angle
+            let excessAngle = abs(angleOfAttack) - stallAngle
+            stallFactor = max(0.0, 1.0 - (excessAngle / (stallAngle * 0.5)))
+        }
+        
+        // Apply stall effects
+        if stallFactor < 1.0 {
+            // Reduced lift during stall
+            let stallForce = CGVector(dx: 0, dy: -5.0 * (1.0 - stallFactor) * speedFactor)
+            physicsBody.applyForce(stallForce)
+            
+            // Add some randomness to simulate turbulence during stall
+            let turbulence = CGVector(
+                dx: CGFloat.random(in: -1...1) * (1.0 - stallFactor) * 2.0,
+                dy: CGFloat.random(in: -1...1) * (1.0 - stallFactor) * 2.0
+            )
+            physicsBody.applyForce(turbulence)
+            
+            // Apply torque to simulate tendency to spin during stall
+            let stallTorque = CGFloat.random(in: -0.5...0.5) * (1.0 - stallFactor) * 0.5
+            physicsBody.applyTorque(stallTorque)
+        }
+        
+        // Apply drag based on angle of attack
+        // More drag when not aligned with airflow
+        let angleOfAttackFactor = abs(sin(angleOfAttack))
+        let dragCoefficient = foldType.physicsProperties.drag * (1.0 + angleOfAttackFactor * 2.0)
+        
+        let dragForce = CGVector(
+            dx: -velocity.dx * dragCoefficient * speedFactor,
+            dy: -velocity.dy * dragCoefficient * speedFactor
+        )
+        
+        physicsBody.applyForce(dragForce)
     }
     
     /// Limit the airplane's speed to its maximum value
@@ -234,6 +294,30 @@ class PaperAirplane {
     /// Apply rotation to bank the airplane
     func bank(amount: CGFloat) {
         node.physicsBody?.applyTorque(amount)
+        
+        // Apply banking physics - when banked, some lift becomes lateral movement
+        if abs(amount) > 0.1 {
+            guard let physicsBody = node.physicsBody else { return }
+            
+            // Get current velocity
+            let velocity = physicsBody.velocity
+            let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
+            
+            // Only apply banking physics if we have sufficient speed
+            if speed > minSpeed {
+                // Calculate bank angle from current rotation
+                let bankAngle = node.zRotation
+                
+                // Apply lateral force based on bank angle
+                // This simulates the airplane turning when banked
+                let turnForce = CGVector(
+                    dx: sin(bankAngle) * amount * 2.0,
+                    dy: -cos(bankAngle) * amount * 2.0
+                )
+                
+                physicsBody.applyForce(turnForce)
+            }
+        }
     }
     
     /// Handle impact with obstacle
