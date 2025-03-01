@@ -325,6 +325,8 @@ class GameModeSelectionScene: SKScene {
     private var challengeButton: SKNode?
     private var dailyRunButton: SKNode?
     private var backButton: SKNode?
+    private var environmentButton: SKNode?
+    private var currentEnvironmentLabel: SKLabelNode?
     
     // MARK: - Scene Lifecycle
     
@@ -336,6 +338,7 @@ class GameModeSelectionScene: SKScene {
         createBackground()
         createTitle()
         createButtons()
+        createEnvironmentSelector()
         
         // Animate elements in
         animateSceneIn()
@@ -410,6 +413,29 @@ class GameModeSelectionScene: SKScene {
         }
     }
     
+    /// Create environment selector
+    private func createEnvironmentSelector() {
+        // Create environment button
+        environmentButton = createButton(title: "Change Environment", size: CGSize(width: 250, height: 50))
+        environmentButton?.position = CGPoint(x: size.width / 2, y: size.height * 0.2)
+        environmentButton?.name = "environmentButton"
+        
+        if let environmentButton = environmentButton {
+            addChild(environmentButton)
+        }
+        
+        // Create current environment label
+        currentEnvironmentLabel = SKLabelNode(text: "Current: \(GameManager.shared.currentEnvironmentType.displayName)")
+        currentEnvironmentLabel?.fontName = "AvenirNext-Regular"
+        currentEnvironmentLabel?.fontSize = 18
+        currentEnvironmentLabel?.fontColor = .white
+        currentEnvironmentLabel?.position = CGPoint(x: size.width / 2, y: size.height * 0.15)
+        
+        if let currentEnvironmentLabel = currentEnvironmentLabel {
+            addChild(currentEnvironmentLabel)
+        }
+    }
+    
     /// Create an individual button
     private func createButton(title: String, size: CGSize) -> SKNode {
         let button = SKNode()
@@ -448,7 +474,7 @@ class GameModeSelectionScene: SKScene {
         ]))
         
         // Animate buttons
-        let buttons = [freeFlightButton, challengeButton, dailyRunButton, backButton]
+        let buttons = [freeFlightButton, challengeButton, dailyRunButton, environmentButton, backButton]
         
         for (index, button) in buttons.enumerated() {
             button?.alpha = 0
@@ -463,6 +489,13 @@ class GameModeSelectionScene: SKScene {
                 ])
             ]))
         }
+        
+        // Animate environment label
+        currentEnvironmentLabel?.alpha = 0
+        currentEnvironmentLabel?.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.7),
+            SKAction.fadeIn(withDuration: 0.3)
+        ]))
     }
     
     // MARK: - Touch Handling
@@ -487,6 +520,8 @@ class GameModeSelectionScene: SKScene {
                 handleChallengeButtonTap()
             case "dailyRunButton":
                 handleDailyRunButtonTap()
+            case "environmentButton":
+                handleEnvironmentButtonTap()
             case "backButton":
                 handleBackButtonTap()
             default:
@@ -501,26 +536,22 @@ class GameModeSelectionScene: SKScene {
         // Animate button press
         animateButtonPress(freeFlightButton)
         
-        // Set game mode to free flight
-        GameManager.shared.currentMode = .freeFlight
-        
-        // Present flight scene
-        let flightScene = FlightScene(size: size)
-        let transition = SKTransition.fade(withDuration: 0.5)
-        view?.presentScene(flightScene, transition: transition)
+        // Present flight scene with free flight mode
+        if let view = view {
+            let gameViewController = view.window?.rootViewController as? GameViewController
+            gameViewController?.presentFlightScene(in: view, mode: .freeFlight)
+        }
     }
     
     private func handleChallengeButtonTap() {
         // Animate button press
         animateButtonPress(challengeButton)
         
-        // Set game mode to challenge
-        GameManager.shared.currentMode = .challenge
-        
         // Present flight scene with challenge mode
-        let flightScene = FlightScene(size: size)
-        let transition = SKTransition.fade(withDuration: 0.5)
-        view?.presentScene(flightScene, transition: transition)
+        if let view = view {
+            let gameViewController = view.window?.rootViewController as? GameViewController
+            gameViewController?.presentFlightScene(in: view, mode: .challenge)
+        }
     }
     
     private func handleDailyRunButtonTap() {
@@ -529,20 +560,26 @@ class GameModeSelectionScene: SKScene {
         
         // Check if player can participate in daily run
         if GameManager.shared.canParticipateDailyRun() {
-            // Set game mode to daily run
-            GameManager.shared.currentMode = .dailyRun
-            
             // Record participation
             GameManager.shared.recordDailyRunParticipation()
             
             // Present flight scene with daily run mode
-            let flightScene = FlightScene(size: size)
-            let transition = SKTransition.fade(withDuration: 0.5)
-            view?.presentScene(flightScene, transition: transition)
+            if let view = view {
+                let gameViewController = view.window?.rootViewController as? GameViewController
+                gameViewController?.presentFlightScene(in: view, mode: .dailyRun)
+            }
         } else {
             // Show message that daily run is already completed
             showDailyRunCompletedMessage()
         }
+    }
+    
+    private func handleEnvironmentButtonTap() {
+        // Animate button press
+        animateButtonPress(environmentButton)
+        
+        // Show environment selection menu
+        showEnvironmentSelectionMenu()
     }
     
     private func handleBackButtonTap() {
@@ -620,5 +657,123 @@ class GameModeSelectionScene: SKScene {
             SKAction.wait(forDuration: 0.1), // Small delay to prevent accidental taps
             tapHandler
         ]))
+    }
+    
+    /// Show the environment selection menu
+    private func showEnvironmentSelectionMenu() {
+        // Create menu background
+        let menuBackground = SKShapeNode(rectOf: CGSize(width: 400, height: 400), cornerRadius: 20)
+        menuBackground.fillColor = .white
+        menuBackground.strokeColor = .darkGray
+        menuBackground.lineWidth = 2
+        menuBackground.position = CGPoint(x: size.width / 2, y: size.height / 2)
+        menuBackground.zPosition = 100
+        menuBackground.name = "environmentMenu"
+        
+        // Create title
+        let titleLabel = SKLabelNode(text: "Select Environment")
+        titleLabel.fontName = "AvenirNext-Bold"
+        titleLabel.fontSize = 24
+        titleLabel.fontColor = .systemBlue
+        titleLabel.position = CGPoint(x: 0, y: 150)
+        menuBackground.addChild(titleLabel)
+        
+        // Get available environments
+        let availableEnvironments = GameManager.shared.getAvailableEnvironments()
+        let buttonHeight: CGFloat = 50
+        let buttonWidth: CGFloat = 300
+        let buttonSpacing: CGFloat = 60
+        let startY: CGFloat = 100
+        
+        // Create a button for each available environment
+        for (index, environmentType) in availableEnvironments.enumerated() {
+            let button = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 10)
+            button.fillColor = environmentType == GameManager.shared.currentEnvironmentType ? .systemGreen : .systemBlue
+            button.strokeColor = .darkGray
+            button.lineWidth = 1
+            button.position = CGPoint(x: 0, y: startY - CGFloat(index) * buttonSpacing)
+            button.name = "env_\(environmentType.rawValue)"
+            
+            let nameLabel = SKLabelNode(text: environmentType.displayName)
+            nameLabel.fontName = "AvenirNext-Bold"
+            nameLabel.fontSize = 20
+            nameLabel.fontColor = .white
+            nameLabel.verticalAlignmentMode = .center
+            button.addChild(nameLabel)
+            
+            menuBackground.addChild(button)
+        }
+        
+        // Create close button
+        let closeButton = SKShapeNode(rectOf: CGSize(width: 100, height: 40), cornerRadius: 10)
+        closeButton.fillColor = .systemRed
+        closeButton.strokeColor = .darkGray
+        closeButton.lineWidth = 1
+        closeButton.position = CGPoint(x: 0, y: -150)
+        closeButton.name = "closeEnvironmentMenu"
+        
+        let closeText = SKLabelNode(text: "Close")
+        closeText.fontName = "AvenirNext-Bold"
+        closeText.fontSize = 20
+        closeText.fontColor = .white
+        closeText.verticalAlignmentMode = .center
+        closeButton.addChild(closeText)
+        
+        menuBackground.addChild(closeButton)
+        
+        // Add to scene
+        addChild(menuBackground)
+    }
+    
+    /// Handle environment selection
+    private func handleEnvironmentSelection(_ environmentRawValue: Int) {
+        // Close the menu
+        childNode(withName: "environmentMenu")?.removeFromParent()
+        
+        // Get the environment type from raw value
+        if let environmentType = Environment.EnvironmentType.allCases.first(where: { $0.rawValue == environmentRawValue }) {
+            // Set the environment
+            GameManager.shared.setEnvironment(type: environmentType)
+            
+            // Update the label
+            currentEnvironmentLabel?.text = "Current: \(environmentType.displayName)"
+            
+            // Show confirmation
+            let confirmationLabel = SKLabelNode(text: "Environment changed to \(environmentType.displayName)")
+            confirmationLabel.fontName = "AvenirNext-Bold"
+            confirmationLabel.fontSize = 20
+            confirmationLabel.fontColor = .white
+            confirmationLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
+            confirmationLabel.zPosition = 100
+            addChild(confirmationLabel)
+            
+            // Fade out confirmation
+            let fadeAction = SKAction.sequence([
+                SKAction.wait(forDuration: 1.5),
+                SKAction.fadeOut(withDuration: 0.5),
+                SKAction.removeFromParent()
+            ])
+            confirmationLabel.run(fadeAction)
+        }
+    }
+    
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        let location = touch.location(in: self)
+        let touchedNodes = nodes(at: location)
+        
+        // Check for environment menu interactions
+        if let environmentMenu = childNode(withName: "environmentMenu") {
+            for node in touchedNodes {
+                if node.name == "closeEnvironmentMenu" {
+                    environmentMenu.removeFromParent()
+                    return
+                } else if let name = node.name, name.hasPrefix("env_") {
+                    let envRawValue = Int(name.replacingOccurrences(of: "env_", with: "")) ?? 0
+                    handleEnvironmentSelection(envRawValue)
+                    return
+                }
+            }
+        }
     }
 } 

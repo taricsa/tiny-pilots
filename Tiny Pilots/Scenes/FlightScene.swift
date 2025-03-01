@@ -17,6 +17,8 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     // Game elements
     private var paperAirplane: PaperAirplane?
     private var cameraNode: SKCameraNode?
+    private var environment: Environment?
+    private var parallaxBackground: ParallaxBackground?
     
     // HUD elements
     private var speedLabel: SKLabelNode?
@@ -28,6 +30,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     private var lastUpdateTime: TimeInterval = 0
     private var isPaused: Bool = false
     private var distanceTraveled: CGFloat = 0
+    private var gameMode: GameManager.GameMode = .freeFlight
     
     // Collision categories
     struct PhysicsCategory {
@@ -39,6 +42,18 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         static let boundary: UInt32 = 0x1 << 4
     }
     
+    // MARK: - Initialization
+    
+    /// Initialize with a specific game mode
+    init(size: CGSize, mode: GameManager.GameMode) {
+        self.gameMode = mode
+        super.init(size: size)
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        super.init(coder: aDecoder)
+    }
+    
     // MARK: - Scene Lifecycle
     
     override func didMove(to view: SKView) {
@@ -47,8 +62,8 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         
         // Set up scene elements
         setupCamera()
-        setupAirplane()
         setupEnvironment()
+        setupAirplane()
         setupHUD()
         
         // Start physics simulation
@@ -58,7 +73,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         setupWind()
         
         // Start the game
-        GameManager.shared.startNewGame(mode: .freeFlight)
+        GameManager.shared.startNewGame(mode: gameMode)
     }
     
     override func willMove(from view: SKView) {
@@ -117,9 +132,30 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     
     /// Set up the environment elements (ground, obstacles, etc.)
     private func setupEnvironment() {
-        // Create ground
+        // Get the active environment from GameManager or create a new one
+        if let activeEnvironment = GameManager.shared.activeEnvironment {
+            environment = activeEnvironment
+        } else {
+            environment = Environment(type: GameManager.shared.currentEnvironmentType)
+            GameManager.shared.activeEnvironment = environment
+        }
+        
+        guard let environment = environment else { return }
+        
+        // Set the background color based on environment
+        backgroundColor = environment.skyColor
+        
+        // Create ground with environment texture
         let groundHeight: CGFloat = 100.0
-        let groundNode = SKSpriteNode(color: .green, size: CGSize(width: size.width * 3, height: groundHeight))
+        let groundNode = SKSpriteNode(color: environment.groundColor, size: CGSize(width: size.width * 3, height: groundHeight))
+        
+        // Apply ground texture if available
+        if let groundTexture = environment.groundTexture {
+            groundTexture.filteringMode = .nearest
+            groundNode.texture = groundTexture
+            groundNode.texture?.filteringMode = .nearest
+        }
+        
         groundNode.position = CGPoint(x: size.width / 2, y: groundHeight / 2)
         groundNode.zPosition = -5
         
@@ -133,13 +169,20 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         
         addChild(groundNode)
         
-        // Create sky background
-        let skyNode = SKSpriteNode(color: SKColor(red: 0.4, green: 0.6, blue: 0.95, alpha: 1.0), size: size)
+        // Create sky background with environment texture
+        let skyNode = SKSpriteNode(color: environment.skyColor, size: size)
+        if let backgroundTexture = environment.backgroundTexture {
+            backgroundTexture.filteringMode = .nearest
+            skyNode.texture = backgroundTexture
+        }
         skyNode.position = CGPoint(x: size.width / 2, y: size.height / 2)
         skyNode.zPosition = -10
         addChild(skyNode)
         
-        // Add clouds (placeholder - would use proper textures in production)
+        // Set up parallax background
+        setupParallaxBackground()
+        
+        // Add clouds based on environment
         addClouds()
         
         // Add obstacles based on the current environment
@@ -150,14 +193,34 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         
         // Add world boundaries to keep the airplane within playable area
         addWorldBoundaries()
+        
+        // Play ambient sound if available
+        if let ambientSound = environment.ambientSound {
+            let soundAction = SKAction.playSoundFileNamed(ambientSound, waitForCompletion: false)
+            let loopAction = SKAction.repeatForever(soundAction)
+            run(loopAction, withKey: "ambientSound")
+        }
+    }
+    
+    /// Set up the parallax background with environment layers
+    private func setupParallaxBackground() {
+        guard let environment = environment else { return }
+        
+        // Create parallax background manager
+        parallaxBackground = ParallaxBackground(parent: self, size: size)
+        parallaxBackground?.setup(with: environment.parallaxLayers)
     }
     
     /// Add cloud decorations to the scene
     private func addClouds() {
+        guard let environment = environment else { return }
+        
         // Add several clouds at random positions
         for _ in 0..<15 {
             let cloudWidth = CGFloat.random(in: 100...300)
             let cloudHeight = CGFloat.random(in: 50...150)
+            
+            // Create cloud sprite
             let cloud = SKSpriteNode(color: .white, size: CGSize(width: cloudWidth, height: cloudHeight))
             cloud.alpha = 0.8
             cloud.position = CGPoint(
@@ -173,58 +236,51 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
             ])
             cloud.run(SKAction.repeatForever(scaleAction))
             
-            addChild(cloud)
+            // Add to parallax background with appropriate scroll speed
+            parallaxBackground?.addCloud(at: cloud.position, size: cloud.size, speed: 0.1)
         }
     }
     
     /// Add obstacles to the scene based on the current environment
     private func addObstacles() {
-        // In a full implementation, this would load obstacles based on the current environment
-        // For now, we'll add some simple obstacles
+        guard let environment = environment else { return }
         
-        // Add a few floating obstacles
-        for i in 1...5 {
-            let obstacle = SKSpriteNode(color: .brown, size: CGSize(width: 50, height: 200))
-            obstacle.position = CGPoint(x: size.width * 0.5 + CGFloat(i) * 300, y: size.height * 0.5)
+        // Add obstacles based on the environment type
+        for i in 1...10 {
+            // Get a random obstacle type for this environment
+            let obstacleType = environment.getRandomObstacleType()
+            let obstacle = Obstacle(type: obstacleType)
             
-            // Set up physics body
-            let obstaclePhysicsBody = SKPhysicsBody(rectangleOf: obstacle.size)
-            obstaclePhysicsBody.isDynamic = false
-            obstaclePhysicsBody.categoryBitMask = PhysicsCategory.obstacle
-            obstaclePhysicsBody.collisionBitMask = PhysicsCategory.airplane
-            obstaclePhysicsBody.contactTestBitMask = PhysicsCategory.airplane
-            obstacle.physicsBody = obstaclePhysicsBody
+            // Position the obstacle
+            let xPos = size.width * 0.5 + CGFloat(i) * 300
+            let yPos = size.height * CGFloat.random(in: 0.2...0.6)
+            obstacle.position(at: CGPoint(x: xPos, y: yPos))
             
-            addChild(obstacle)
+            // Apply visual effects
+            obstacle.applyVisualEffects()
+            
+            // Add to scene
+            addChild(obstacle.node)
         }
     }
     
     /// Add collectible items to the scene
     private func addCollectibles() {
-        // Add collectible stars that give points when collected
-        for i in 1...10 {
-            let collectible = SKSpriteNode(color: .yellow, size: CGSize(width: 30, height: 30))
-            collectible.position = CGPoint(
-                x: size.width * 0.5 + CGFloat(i) * 200,
-                y: size.height * CGFloat.random(in: 0.3...0.8)
-            )
+        guard let environment = environment else { return }
+        
+        // Add collectibles based on the environment type
+        for i in 1...15 {
+            // Get a random collectible type for this environment
+            let collectibleType = environment.getRandomCollectibleType()
+            let collectible = Collectible(type: collectibleType)
             
-            // Set up physics body
-            let collectiblePhysicsBody = SKPhysicsBody(circleOfRadius: 15)
-            collectiblePhysicsBody.isDynamic = false
-            collectiblePhysicsBody.categoryBitMask = PhysicsCategory.collectible
-            collectiblePhysicsBody.collisionBitMask = 0
-            collectiblePhysicsBody.contactTestBitMask = PhysicsCategory.airplane
-            collectible.physicsBody = collectiblePhysicsBody
+            // Position the collectible
+            let xPos = size.width * 0.5 + CGFloat(i) * 200
+            let yPos = size.height * CGFloat.random(in: 0.3...0.8)
+            collectible.position(at: CGPoint(x: xPos, y: yPos))
             
-            // Add a pulsing animation
-            let pulseAction = SKAction.sequence([
-                SKAction.scale(to: 1.2, duration: 0.5),
-                SKAction.scale(to: 1.0, duration: 0.5)
-            ])
-            collectible.run(SKAction.repeatForever(pulseAction))
-            
-            addChild(collectible)
+            // Add to scene
+            addChild(collectible.node)
         }
     }
     
@@ -281,11 +337,12 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     
     /// Set up wind effects for the current environment
     private func setupWind() {
-        // Set initial wind direction and strength based on the current environment
-        // For now, we'll use random values
-        let windDirection = CGFloat.random(in: 0...360)
-        let windStrength = CGFloat.random(in: GameConfig.Environments.windStrengthRange)
+        guard let environment = environment else { return }
         
+        // Get random wind direction and strength based on environment
+        let (windDirection, windStrength) = environment.getRandomWind()
+        
+        // Set wind vector in physics manager
         PhysicsManager.shared.setWindVector(direction: windDirection, strength: windStrength)
         
         // Add wind particle effects
@@ -294,7 +351,9 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     
     /// Add wind particle effects to visualize wind direction
     private func addWindParticles() {
-        // Create wind particles at different positions
+        guard let environment = environment else { return }
+        
+        // Create wind particles at different positions based on environment
         for _ in 0..<5 {
             if let windParticle = SKEmitterNode(fileNamed: "WindParticle") {
                 // Position randomly within the scene
@@ -314,6 +373,21 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
                     if let windStrength = windVector.length {
                         windParticle.particleSpeed = windStrength * 2
                     }
+                }
+                
+                // Adjust particle properties based on environment
+                switch environment.weatherCondition {
+                case .clear:
+                    windParticle.particleBirthRate *= 0.5
+                case .lightWind:
+                    // Default settings
+                    break
+                case .strongWind:
+                    windParticle.particleBirthRate *= 2.0
+                    windParticle.particleLifetime *= 1.5
+                case .variable:
+                    // Random variation
+                    windParticle.particleBirthRate *= CGFloat.random(in: 0.5...2.0)
                 }
                 
                 // Add to scene
@@ -343,10 +417,11 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         updateCamera()
         updateHUD()
         updateGameState(deltaTime: dt)
+        updateParallaxBackground()
         
         // Occasionally update wind to create variation
         if Int.random(in: 0...100) < 2 { // 2% chance per frame
-            PhysicsManager.shared.updateRandomWind()
+            updateRandomWind()
         }
     }
     
@@ -514,6 +589,27 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         cameraNode?.addChild(menuButton)
     }
     
+    /// Update the parallax background based on camera position
+    private func updateParallaxBackground() {
+        guard let cameraNode = cameraNode else { return }
+        parallaxBackground?.update(withCameraPosition: cameraNode.position)
+    }
+    
+    /// Update wind with random variations based on environment
+    private func updateRandomWind() {
+        guard let environment = environment else { return }
+        
+        // Get new random wind based on environment
+        let (windDirection, windStrength) = environment.getRandomWind()
+        
+        // Gradually transition to new wind
+        PhysicsManager.shared.transitionWindVector(
+            toDirection: windDirection,
+            strength: windStrength,
+            duration: 3.0
+        )
+    }
+    
     // MARK: - Touch Handling
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -614,9 +710,9 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     
     /// Restart the game
     private func restartGame() {
-        // Create a new flight scene
+        // Create a new flight scene with the same game mode
         if let view = view {
-            let newScene = FlightScene(size: size)
+            let newScene = FlightScene(size: size, mode: gameMode)
             newScene.scaleMode = scaleMode
             view.presentScene(newScene, transition: SKTransition.fade(withDuration: 0.5))
         }
@@ -686,22 +782,49 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     
     /// Handle collection of a collectible item
     private func handleCollectibleCollection(airplane: SKNode, collectible: SKNode) {
-        // Increment collectibles counter
-        GameManager.shared.sessionData.collectiblesGathered += 1
-        
-        // Update score
-        GameManager.shared.sessionData.score += 100
-        
-        // Visual and audio feedback
-        let collectAction = SKAction.group([
-            SKAction.scale(to: 1.5, duration: 0.2),
-            SKAction.fadeOut(withDuration: 0.2)
-        ])
-        
-        collectible.run(SKAction.sequence([
-            collectAction,
-            SKAction.removeFromParent()
-        ]))
+        // Find the collectible object
+        if let collectibleNode = collectible as? SKSpriteNode,
+           let collectibleName = collectibleNode.name,
+           collectibleName.hasPrefix("collectible_") {
+            
+            // Call the collect method on the Collectible object
+            for child in children {
+                if child === collectibleNode {
+                    // Find the collectible type from the node name
+                    let typeName = collectibleName.replacingOccurrences(of: "collectible_", with: "")
+                    
+                    // Determine point value based on type
+                    var pointValue = 10 // Default value
+                    
+                    if typeName == "star" {
+                        pointValue = 10
+                    } else if typeName == "coin" {
+                        pointValue = 5
+                    } else if typeName == "gem" {
+                        pointValue = 20
+                    } else if typeName == "shell" {
+                        pointValue = 15
+                    }
+                    
+                    // Update game data
+                    GameManager.shared.sessionData.collectiblesGathered += 1
+                    GameManager.shared.sessionData.score += pointValue
+                    
+                    // Visual and audio feedback
+                    let collectAction = SKAction.group([
+                        SKAction.scale(to: 1.5, duration: 0.2),
+                        SKAction.fadeOut(withDuration: 0.2)
+                    ])
+                    
+                    collectible.run(SKAction.sequence([
+                        collectAction,
+                        SKAction.removeFromParent()
+                    ]))
+                    
+                    break
+                }
+            }
+        }
     }
     
     /// Handle collision between airplane and ground

@@ -63,14 +63,11 @@ class GameViewController: UIViewController {
     
     /// Present the flight scene in the given view
     func presentFlightScene(in view: SKView, mode: GameManager.GameMode) {
-        // Create the flight scene with the view size
-        let scene = FlightScene(size: view.bounds.size)
+        // Create the flight scene with the view size and game mode
+        let scene = FlightScene(size: view.bounds.size, mode: mode)
         
         // Set scale mode to fill the view
         scene.scaleMode = .aspectFill
-        
-        // Set the game mode
-        GameManager.shared.currentMode = mode
         
         // Present the scene with a transition
         let transition = SKTransition.fade(withDuration: 0.5)

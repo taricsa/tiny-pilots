@@ -46,8 +46,11 @@ class GameManager {
     /// The current game mode
     var currentMode: GameMode = .freeFlight
     
-    /// The player's current environment
-    var currentEnvironment: Int = 0
+    /// The player's current environment type
+    var currentEnvironmentType: Environment.EnvironmentType = .meadow
+    
+    /// The active environment
+    var activeEnvironment: Environment?
     
     /// The active paper airplane
     var activeAirplane: PaperAirplane?
@@ -99,6 +102,11 @@ class GameManager {
             activeAirplane = PaperAirplane()
         }
         
+        // Create the active environment if needed
+        if activeEnvironment == nil {
+            activeEnvironment = Environment(type: currentEnvironmentType)
+        }
+        
         // Notify observers that a new game is starting
         NotificationCenter.default.post(name: .gameDidStart, object: nil)
     }
@@ -139,6 +147,38 @@ class GameManager {
             "score": sessionData.score,
             "earnedXP": earnedXP
         ])
+    }
+    
+    // MARK: - Environment Management
+    
+    /// Set the current environment type and create a new environment
+    func setEnvironment(type: Environment.EnvironmentType) {
+        // Check if the environment is unlocked
+        guard type.isUnlocked else {
+            print("Environment \(type.displayName) is not unlocked yet")
+            return
+        }
+        
+        // Set the current environment type
+        currentEnvironmentType = type
+        
+        // Create a new environment
+        activeEnvironment = Environment(type: type)
+        
+        // Notify observers that the environment has changed
+        NotificationCenter.default.post(name: .environmentDidChange, object: nil, userInfo: [
+            "environmentType": type
+        ])
+    }
+    
+    /// Get all available environment types
+    func getAvailableEnvironments() -> [Environment.EnvironmentType] {
+        return Environment.EnvironmentType.allCases.filter { $0.isUnlocked }
+    }
+    
+    /// Get all environment types, including locked ones
+    func getAllEnvironments() -> [Environment.EnvironmentType] {
+        return Environment.EnvironmentType.allCases
     }
     
     // MARK: - Player Progression Methods
@@ -226,7 +266,7 @@ class GameManager {
     /// Update high scores based on the current session
     private func updateHighScores() {
         // Create a key for the current environment and mode
-        let key = "\(currentEnvironment)_\(currentMode)"
+        let key = "\(currentEnvironmentType.rawValue)_\(currentMode)"
         
         // Check if we have a new high score
         if sessionData.score > (playerData.highScores[key] ?? 0) {
@@ -234,7 +274,7 @@ class GameManager {
             
             // Notify about new high score
             NotificationCenter.default.post(name: .newHighScoreAchieved, object: nil, userInfo: [
-                "environment": currentEnvironment,
+                "environment": currentEnvironmentType,
                 "mode": currentMode,
                 "score": sessionData.score
             ])
@@ -302,4 +342,5 @@ extension Notification.Name {
     static let playerDidLevelUp = Notification.Name("playerDidLevelUp")
     static let contentDidUnlock = Notification.Name("contentDidUnlock")
     static let newHighScoreAchieved = Notification.Name("newHighScoreAchieved")
+    static let environmentDidChange = Notification.Name("environmentDidChange")
 } 

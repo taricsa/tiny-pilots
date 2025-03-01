@@ -292,6 +292,64 @@ class PhysicsManager {
             dy: sin(newDirection) * newStrength
         )
     }
+    
+    /// Gradually transition wind vector to a new direction and strength
+    /// - Parameters:
+    ///   - toDirection: Target wind direction in degrees
+    ///   - strength: Target wind strength
+    ///   - duration: Duration of the transition in seconds
+    func transitionWindVector(toDirection: CGFloat, strength: CGFloat, duration: TimeInterval) {
+        // Convert target direction to radians
+        let targetRadians = toDirection * .pi / 180.0
+        
+        // Create target wind vector
+        let targetVector = CGVector(
+            dx: cos(targetRadians) * strength,
+            dy: sin(targetRadians) * strength
+        )
+        
+        // Store initial wind vector
+        let initialVector = windVector
+        
+        // Create a timer to update the wind vector gradually
+        let updateInterval: TimeInterval = 0.05 // 50ms updates
+        let steps = Int(duration / updateInterval)
+        var currentStep = 0
+        
+        // Create and start the transition timer
+        let transitionTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            currentStep += 1
+            let progress = CGFloat(currentStep) / CGFloat(steps)
+            
+            // Use easing function for smoother transition
+            let easedProgress = self.easeInOutQuad(progress)
+            
+            // Interpolate between initial and target vectors
+            let newDx = initialVector.dx + (targetVector.dx - initialVector.dx) * easedProgress
+            let newDy = initialVector.dy + (targetVector.dy - initialVector.dy) * easedProgress
+            
+            // Update wind vector
+            self.windVector = CGVector(dx: newDx, dy: newDy)
+            
+            // Stop timer when transition is complete
+            if currentStep >= steps {
+                timer.invalidate()
+            }
+        }
+        
+        // Add the timer to the run loop
+        RunLoop.current.add(transitionTimer, forMode: .common)
+    }
+    
+    /// Easing function for smoother transitions
+    private func easeInOutQuad(_ x: CGFloat) -> CGFloat {
+        return x < 0.5 ? 2 * x * x : 1 - pow(-2 * x + 2, 2) / 2
+    }
 }
 
 // MARK: - CGVector Extension
