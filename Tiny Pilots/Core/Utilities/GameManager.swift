@@ -288,15 +288,16 @@ class GameManager: GameManagerProtocol {
     
     private func handleStatusChange(from oldStatus: GameState.Status, to newStatus: GameState.Status) {
         switch (oldStatus, newStatus) {
+        case (.paused, .playing):
+            analytics.trackEvent(.gameResumed)
+            logger.info("Game resumed", category: .game)
+            
         case (_, .playing):
-            logger.info("Game started/resumed", category: .game)
+            logger.info("Game started", category: .game)
             
         case (.playing, .paused):
             let duration = gameStateManager.getCurrentSessionDuration() ?? 0
             analytics.trackEvent(.gamePaused(duration: duration))
-            
-        case (.paused, .playing):
-            analytics.trackEvent(.gameResumed)
             
         case (_, .ended) where oldStatus != .ended:
             handleGameEnd()

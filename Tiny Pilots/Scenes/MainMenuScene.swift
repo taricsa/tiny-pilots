@@ -622,11 +622,11 @@ class MainMenuScene: SKScene {
     /// Update all fonts when dynamic type changes
     private func updateDynamicTypeFonts() {
         // Update title font
-        if let titleLabel = titleLabel as? SKLabelNode {
-            titleLabel.fontSize = DynamicTypeHelper.shared.scaledFontSize(48)
+        if let titleLabel = titleLabel {
+            titleLabel.fontSize = DynamicTypeHelper.shared.scaledFontSize(baseSize: 48)
         }
         if let childLabel = titleLabel?.children.first as? SKLabelNode {
-            childLabel.fontSize = DynamicTypeHelper.shared.scaledFontSize(48)
+            childLabel.fontSize = DynamicTypeHelper.shared.scaledFontSize(baseSize: 48)
         }
         
         // Update button fonts

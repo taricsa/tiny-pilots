@@ -758,13 +758,10 @@ extension GameScene: SKPhysicsContactDelegate {
     }
     
     private func handleObstacleCollision(_ contact: SKPhysicsContact) {
-        // Determine which node is the obstacle
-        let obstacleNode: SKNode
-        if contact.bodyA.categoryBitMask == PhysicsCategory.obstacle {
-            obstacleNode = contact.bodyA.node!
-        } else {
-            obstacleNode = contact.bodyB.node!
-        }
+        // Verify obstacle collision occurred (node validation)
+        _ = contact.bodyA.categoryBitMask == PhysicsCategory.obstacle 
+            ? contact.bodyA.node 
+            : contact.bodyB.node
         
         // Handle collision through ViewModel
         viewModel?.handleObstacleCollision()

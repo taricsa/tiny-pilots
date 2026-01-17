@@ -9,6 +9,7 @@ import Foundation
 import UIKit
 
 /// Main analytics manager implementing privacy-compliant analytics tracking
+@unchecked Sendable
 class AnalyticsManager: AnalyticsProtocol {
     static let shared = AnalyticsManager()
     

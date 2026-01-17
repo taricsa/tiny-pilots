@@ -179,7 +179,6 @@ class GameRules {
     /// - Returns: New streak count
     static func calculateDailyRunStreak(lastRunDate: Date?, currentStreak: Int) -> Int {
         let calendar = Calendar.current
-        let today = Date()
         
         guard let lastDate = lastRunDate else {
             return 1 // First daily run
