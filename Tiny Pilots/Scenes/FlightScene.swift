@@ -4,10 +4,21 @@
 //
 //  Created on 2025-03-01.
 //
+//  ARCHITECTURE NOTE:
+//  This is the primary gameplay scene currently in use. It provides a simpler,
+//  more direct implementation compared to GameScene.swift.
+//
+//  GameScene.swift exists as a more modern MVVM-based implementation with
+//  dependency injection, accessibility features, and performance monitoring,
+//  but is not currently integrated into the app flow.
+//
+//  Future migration path: Consider migrating FlightScene features into
+//  GameScene for better architecture, or document when to use each.
 
 import SpriteKit
 import GameplayKit
 import CoreMotion
+import UIKit
 
 /// The main flight scene for Tiny Pilots where the player controls a paper airplane
 class FlightScene: SKScene, SKPhysicsContactDelegate {
@@ -15,599 +26,916 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     // MARK: - Properties
     
     // Game elements
-    private var paperAirplane: PaperAirplane?
-    private var cameraNode: SKCameraNode?
-    private var environment: Environment?
+    private var airplane: PaperAirplane?
     private var parallaxBackground: ParallaxBackground?
+    private var environment: GameEnvironment?
     
-    // HUD elements
-    private var speedLabel: SKLabelNode?
-    private var altitudeLabel: SKLabelNode?
+    // UI elements
     private var scoreLabel: SKLabelNode?
-    private var pauseButton: SKSpriteNode?
+    private var distanceLabel: SKLabelNode?
+    private var timeLabel: SKLabelNode?
+    private var pauseButton: SKNode?
+    private var challengeInfoLabel: SKLabelNode?
     
-    // Scene management
+    // Game state
     private var lastUpdateTime: TimeInterval = 0
-    private var isPaused: Bool = false
-    private var distanceTraveled: CGFloat = 0
-    private var gameMode: GameManager.GameMode = .freeFlight
+    private var motionManager: CMMotionManager?
+    private var cameraNode: SKCameraNode?
+    private var dt: TimeInterval = 0
+    private var gameMode: GameManager.GameMode = .freePlay
+    private var score: Int = 0
     
-    // Collision categories
-    struct PhysicsCategory {
-        static let none: UInt32 = 0
-        static let airplane: UInt32 = 0x1 << 0
-        static let obstacle: UInt32 = 0x1 << 1
-        static let collectible: UInt32 = 0x1 << 2
-        static let ground: UInt32 = 0x1 << 3
-        static let boundary: UInt32 = 0x1 << 4
-    }
+    // Services
+    private var audioService: AudioServiceProtocol?
+    
+    // Haptic feedback generators
+    private let impactGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let notificationGenerator = UINotificationFeedbackGenerator()
+    
+    // Challenge properties
+    private var challengeCode: String?
+    private var challengeCourseID: String?
+    private var challengeDistance: Int?
+    private var challengeTime: Int?
+    
+    // Chunk-based level generation
+    private var lastChunkX: CGFloat = 0
+    private let chunkWidth: CGFloat = 1000
+    private let generateAheadDistance: CGFloat = 2000
     
     // MARK: - Initialization
     
+    convenience init(size: CGSize, challengeCode: String? = nil) {
+        self.init(size: size, mode: .challenge)
+        self.challengeCode = challengeCode
+    }
+    
+    override func didMove(to view: SKView) {
+        // Set up physics world
+        physicsWorld.gravity = GameConfig.Physics.gravity
+        physicsWorld.contactDelegate = self
+        
+        // Configure physics service for this scene
+        PhysicsManager.shared.startPhysicsSimulation()
+        
+        // Set up audio service
+        setupAudioService()
+        
+        // Prepare haptic feedback generators
+        impactGenerator.prepare()
+        notificationGenerator.prepare()
+        
+        // Set up camera
+        setupCamera()
+        
+        // Set up game elements
+        setupGameElements()
+        
+        // Set up UI
+        setupUI()
+        
+        // Start motion updates
+        setupMotionManager()
+    }
+    
     /// Initialize with a specific game mode
     init(size: CGSize, mode: GameManager.GameMode) {
-        self.gameMode = mode
         super.init(size: size)
+        self.gameMode = mode
+        GameManager.shared.setGameMode(convertToGameStateMode(mode))
+    }
+    
+    /// Initialize with a challenge code
+    init(size: CGSize, challengeCode: String) {
+        super.init(size: size)
+        self.challengeCode = challengeCode
+        GameManager.shared.setGameMode(.challenge)
+        
+        // Process the challenge code
+        processChallengeCode()
     }
     
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
     }
     
-    // MARK: - Scene Lifecycle
-    
-    override func didMove(to view: SKView) {
-        // Set up physics world
-        setupPhysicsWorld()
-        
-        // Set up scene elements
-        setupCamera()
-        setupEnvironment()
-        setupAirplane()
-        setupHUD()
-        
-        // Start physics simulation
-        PhysicsManager.shared.startPhysicsSimulation()
-        
-        // Set initial wind for the environment
-        setupWind()
-        
-        // Start the game
-        GameManager.shared.startNewGame(mode: gameMode)
-    }
-    
-    override func willMove(from view: SKView) {
-        // Stop physics simulation when leaving the scene
-        PhysicsManager.shared.stopPhysicsSimulation()
-    }
-    
     // MARK: - Setup Methods
     
-    /// Set up the physics world for the scene
-    private func setupPhysicsWorld() {
-        // Configure physics world through the PhysicsManager
-        PhysicsManager.shared.configurePhysicsWorld(for: self)
-        
-        // Set this scene as the physics contact delegate
-        physicsWorld.contactDelegate = self
-    }
-    
-    /// Set up the camera that follows the airplane
     private func setupCamera() {
         cameraNode = SKCameraNode()
-        if let cameraNode = cameraNode {
-            addChild(cameraNode)
-            camera = cameraNode
-            
-            // Set initial camera position
-            cameraNode.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        }
+        camera = cameraNode
+        addChild(cameraNode!)
+        
+        // Position camera initially
+        cameraNode?.position = CGPoint(x: size.width/2, y: size.height/2)
     }
     
-    /// Set up the player's paper airplane
-    private func setupAirplane() {
-        // Create the paper airplane using the active airplane from GameManager or create a new one
-        if let activeAirplane = GameManager.shared.activeAirplane {
-            paperAirplane = activeAirplane
+    private func setupGameElements() {
+        // Create airplane
+        airplane = PaperAirplane(type: .basic)
+        if let airplane = airplane {
+            airplane.position = CGPoint(x: size.width * 0.3, y: size.height * 0.6)
+            addChild(airplane)
+        }
+        
+        // Create environment
+        if let envType = GameEnvironment.EnvironmentType(rawValue: GameManager.shared.currentEnvironmentType) {
+            environment = GameEnvironment(type: envType, size: size)
         } else {
-            paperAirplane = PaperAirplane()
-            GameManager.shared.activeAirplane = paperAirplane
+            environment = GameEnvironment(type: .meadow, size: size)
+        }
+        if let environment = environment {
+            addChild(environment)
         }
         
-        // Position the airplane
-        if let paperAirplane = paperAirplane {
-            // Set initial position
-            paperAirplane.node.position = CGPoint(x: size.width * 0.3, y: size.height * 0.7)
-            
-            // Set initial rotation (facing slightly upward)
-            paperAirplane.node.zRotation = -CGFloat.pi * 0.05
-            
-            // Add to scene
-            addChild(paperAirplane.node)
-            
-            // Apply initial thrust to get the airplane moving
-            paperAirplane.applyThrust(amount: 50.0)
+        // Create parallax background
+        parallaxBackground = ParallaxBackground(size: size)
+        if let parallaxBackground = parallaxBackground {
+            parallaxBackground.zPosition = -100
+            addChild(parallaxBackground)
         }
+        
+        // Initialize chunk generation at starting position
+        lastChunkX = size.width * 0.3 // Start from airplane's initial X position
     }
     
-    /// Set up the environment elements (ground, obstacles, etc.)
-    private func setupEnvironment() {
-        // Get the active environment from GameManager or create a new one
-        if let activeEnvironment = GameManager.shared.activeEnvironment {
-            environment = activeEnvironment
+    private func setupUI() {
+        // Create a container for all UI elements
+        let uiContainer = SKNode()
+        uiContainer.name = "uiContainer"
+        uiContainer.zPosition = 999
+        cameraNode?.addChild(uiContainer)
+        
+        // Add score label
+        scoreLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+        if let scoreLabel = scoreLabel {
+            scoreLabel.text = "Score: 0"
+            scoreLabel.fontSize = 24
+            scoreLabel.fontColor = .white
+            scoreLabel.horizontalAlignmentMode = .left
+            scoreLabel.verticalAlignmentMode = .top
+            scoreLabel.position = CGPoint(x: -size.width/2 + 20, y: size.height/2 - 30)
+            
+            // Add shadow for better visibility
+            scoreLabel.addShadow(radius: 2, opacity: 0.5)
+            uiContainer.addChild(scoreLabel)
+        }
+        
+        // Add pause button
+        pauseButton = SKShapeNode(rectOf: CGSize(width: 80, height: 40), cornerRadius: 10)
+        if let pauseButton = pauseButton as? SKShapeNode {
+            pauseButton.fillColor = UIColor(white: 0.2, alpha: 0.7)
+            pauseButton.strokeColor = .white
+            pauseButton.lineWidth = 2
+            pauseButton.position = CGPoint(x: -size.width/2 + 60, y: -size.height/2 + 50)
+            pauseButton.zPosition = 10
+            pauseButton.name = "pauseButton"
+            
+            let pauseLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+            pauseLabel.text = "PAUSE"
+            pauseLabel.fontSize = 18
+            pauseLabel.fontColor = .white
+            pauseLabel.verticalAlignmentMode = .center
+            pauseLabel.horizontalAlignmentMode = .center
+            pauseLabel.position = CGPoint.zero
+            pauseButton.addChild(pauseLabel)
+            
+            uiContainer.addChild(pauseButton)
+        }
+        
+        // Add distance label with background
+        let distanceBackground = SKShapeNode(rectOf: CGSize(width: 160, height: 40), cornerRadius: 10)
+        distanceBackground.fillColor = UIColor(white: 0.2, alpha: 0.7)
+        distanceBackground.strokeColor = .white
+        distanceBackground.lineWidth = 1
+        distanceBackground.position = CGPoint(x: 0, y: size.height/2 - 30)
+        uiContainer.addChild(distanceBackground)
+        
+        distanceLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+        if let distanceLabel = distanceLabel {
+            distanceLabel.text = "Distance: 0m"
+            distanceLabel.fontSize = 20
+            distanceLabel.fontColor = .white
+            distanceLabel.horizontalAlignmentMode = .center
+            distanceLabel.verticalAlignmentMode = .center
+            distanceLabel.position = CGPoint.zero
+            distanceBackground.addChild(distanceLabel)
+        }
+        
+        // Add time label with background
+        let timeBackground = SKShapeNode(rectOf: CGSize(width: 140, height: 40), cornerRadius: 10)
+        timeBackground.fillColor = UIColor(white: 0.2, alpha: 0.7)
+        timeBackground.strokeColor = .white
+        timeBackground.lineWidth = 1
+        timeBackground.position = CGPoint(x: size.width/2 - 90, y: size.height/2 - 30)
+        uiContainer.addChild(timeBackground)
+        
+        timeLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+        if let timeLabel = timeLabel {
+            timeLabel.text = "Time: 0s"
+            timeLabel.fontSize = 20
+            timeLabel.fontColor = .white
+            timeLabel.horizontalAlignmentMode = .center
+            timeLabel.verticalAlignmentMode = .center
+            timeLabel.position = CGPoint.zero
+            timeBackground.addChild(timeLabel)
+        }
+        
+        // Add game control buttons on the right side
+        addGameControls(to: uiContainer)
+    }
+    
+    private func addGameControls(to container: SKNode) {
+        // Create restart button
+        let restartButton = createGameButton(name: "restartButton", text: "↻", position: CGPoint(x: size.width/2 - 50, y: -size.height/2 + 170))
+        container.addChild(restartButton)
+        
+        // Create home button
+        let homeButton = createGameButton(name: "homeButton", text: "⌂", position: CGPoint(x: size.width/2 - 50, y: -size.height/2 + 110))
+        container.addChild(homeButton)
+        
+        // Create share button
+        let shareButton = createGameButton(name: "shareButton", text: "↗", position: CGPoint(x: size.width/2 - 50, y: -size.height/2 + 50))
+        container.addChild(shareButton)
+    }
+    
+    private func createGameButton(name: String, text: String, position: CGPoint) -> SKNode {
+        let buttonContainer = SKNode()
+        buttonContainer.name = name
+        buttonContainer.position = position
+        
+        let background = SKShapeNode(circleOfRadius: 25)
+        background.fillColor = UIColor(white: 0.2, alpha: 0.8)
+        background.strokeColor = .white
+        background.lineWidth = 2
+        buttonContainer.addChild(background)
+        
+        let label = SKLabelNode(fontNamed: "Helvetica-Bold")
+        label.text = text
+        label.fontSize = 24
+        label.fontColor = .white
+        label.verticalAlignmentMode = .center
+        label.horizontalAlignmentMode = .center
+        buttonContainer.addChild(label)
+        
+        return buttonContainer
+    }
+    
+    private func createModernButton(size: CGSize, cornerRadius: CGFloat, icon: String, text: String, position: CGPoint) -> SKNode {
+        let button = SKNode()
+        button.position = position
+        
+        // Button background with improved visibility
+        let background = SKShapeNode(rectOf: size, cornerRadius: cornerRadius)
+        background.fillColor = UIColor.black.withAlphaComponent(0.6)
+        background.strokeColor = UIColor.white.withAlphaComponent(0.8)
+        background.lineWidth = 2
+        button.addChild(background)
+        
+        // Replace SF Symbols with standard text
+        let iconNode = SKLabelNode(fontNamed: "Helvetica-Bold")
+        iconNode.text = icon
+        iconNode.fontSize = 20
+        iconNode.fontColor = UIColor.white
+        iconNode.verticalAlignmentMode = .center
+        iconNode.position = CGPoint(x: -size.width/4, y: 0)
+        button.addChild(iconNode)
+        
+        if !text.isEmpty {
+            // Text with proper typography
+            let textNode = SKLabelNode(fontNamed: "Helvetica")
+            textNode.text = text
+            textNode.fontSize = 18
+            textNode.fontColor = UIColor.white
+            textNode.verticalAlignmentMode = .center
+            textNode.position = CGPoint(x: 0, y: 0)
+            button.addChild(textNode)
+        }
+        
+        return button
+    }
+    
+    private func setupMotionManager() {
+        motionManager = CMMotionManager()
+        motionManager?.accelerometerUpdateInterval = 1.0 / 60.0
+        motionManager?.startAccelerometerUpdates()
+    }
+    
+    private func setupAudioService() {
+        // Try to resolve AudioService from DI container, fallback to direct instantiation
+        if let resolved: AudioServiceProtocol = DIContainer.shared.tryResolve(AudioServiceProtocol.self) {
+            audioService = resolved
         } else {
-            environment = Environment(type: GameManager.shared.currentEnvironmentType)
-            GameManager.shared.activeEnvironment = environment
-        }
-        
-        guard let environment = environment else { return }
-        
-        // Set the background color based on environment
-        backgroundColor = environment.skyColor
-        
-        // Create ground with environment texture
-        let groundHeight: CGFloat = 100.0
-        let groundNode = SKSpriteNode(color: environment.groundColor, size: CGSize(width: size.width * 3, height: groundHeight))
-        
-        // Apply ground texture if available
-        if let groundTexture = environment.groundTexture {
-            groundTexture.filteringMode = .nearest
-            groundNode.texture = groundTexture
-            groundNode.texture?.filteringMode = .nearest
-        }
-        
-        groundNode.position = CGPoint(x: size.width / 2, y: groundHeight / 2)
-        groundNode.zPosition = -5
-        
-        // Set up ground physics
-        let groundPhysicsBody = SKPhysicsBody(rectangleOf: groundNode.size)
-        groundPhysicsBody.isDynamic = false
-        groundPhysicsBody.categoryBitMask = PhysicsCategory.ground
-        groundPhysicsBody.collisionBitMask = PhysicsCategory.airplane
-        groundPhysicsBody.contactTestBitMask = PhysicsCategory.airplane
-        groundNode.physicsBody = groundPhysicsBody
-        
-        addChild(groundNode)
-        
-        // Create sky background with environment texture
-        let skyNode = SKSpriteNode(color: environment.skyColor, size: size)
-        if let backgroundTexture = environment.backgroundTexture {
-            backgroundTexture.filteringMode = .nearest
-            skyNode.texture = backgroundTexture
-        }
-        skyNode.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        skyNode.zPosition = -10
-        addChild(skyNode)
-        
-        // Set up parallax background
-        setupParallaxBackground()
-        
-        // Add clouds based on environment
-        addClouds()
-        
-        // Add obstacles based on the current environment
-        addObstacles()
-        
-        // Add collectibles
-        addCollectibles()
-        
-        // Add world boundaries to keep the airplane within playable area
-        addWorldBoundaries()
-        
-        // Play ambient sound if available
-        if let ambientSound = environment.ambientSound {
-            let soundAction = SKAction.playSoundFileNamed(ambientSound, waitForCompletion: false)
-            let loopAction = SKAction.repeatForever(soundAction)
-            run(loopAction, withKey: "ambientSound")
+            audioService = AudioService()
         }
     }
     
-    /// Set up the parallax background with environment layers
-    private func setupParallaxBackground() {
-        guard let environment = environment else { return }
-        
-        // Create parallax background manager
-        parallaxBackground = ParallaxBackground(parent: self, size: size)
-        parallaxBackground?.setup(with: environment.parallaxLayers)
+    // MARK: - Game Flow
+    
+    private func startGame() {
+        GameManager.shared.startGame()
     }
     
-    /// Add cloud decorations to the scene
-    private func addClouds() {
-        guard let environment = environment else { return }
-        
-        // Add several clouds at random positions
-        for _ in 0..<15 {
-            let cloudWidth = CGFloat.random(in: 100...300)
-            let cloudHeight = CGFloat.random(in: 50...150)
+    private func pauseGame() {
+        if GameManager.shared.currentState.status == .playing {
+            GameManager.shared.pauseGame()
+            isPaused = true
             
-            // Create cloud sprite
-            let cloud = SKSpriteNode(color: .white, size: CGSize(width: cloudWidth, height: cloudHeight))
-            cloud.alpha = 0.8
-            cloud.position = CGPoint(
-                x: CGFloat.random(in: 0...(size.width * 3)),
-                y: CGFloat.random(in: (size.height * 0.3)...(size.height * 0.9))
-            )
-            cloud.zPosition = -8
-            
-            // Add some visual interest with a subtle animation
-            let scaleAction = SKAction.sequence([
-                SKAction.scale(by: 1.05, duration: 2.0),
-                SKAction.scale(by: 0.95, duration: 2.0)
-            ])
-            cloud.run(SKAction.repeatForever(scaleAction))
-            
-            // Add to parallax background with appropriate scroll speed
-            parallaxBackground?.addCloud(at: cloud.position, size: cloud.size, speed: 0.1)
+            // Show pause menu
+            showPauseMenu()
         }
     }
     
-    /// Add obstacles to the scene based on the current environment
-    private func addObstacles() {
-        guard let environment = environment else { return }
-        
-        // Add obstacles based on the environment type
-        for i in 1...10 {
-            // Get a random obstacle type for this environment
-            let obstacleType = environment.getRandomObstacleType()
-            let obstacle = Obstacle(type: obstacleType)
-            
-            // Position the obstacle
-            let xPos = size.width * 0.5 + CGFloat(i) * 300
-            let yPos = size.height * CGFloat.random(in: 0.2...0.6)
-            obstacle.position(at: CGPoint(x: xPos, y: yPos))
-            
-            // Apply visual effects
-            obstacle.applyVisualEffects()
-            
-            // Add to scene
-            addChild(obstacle.node)
+    private func resumeGame() {
+        if GameManager.shared.currentState.status == .paused {
+            GameManager.shared.resumeGame()
+            isPaused = false
         }
     }
     
-    /// Add collectible items to the scene
-    private func addCollectibles() {
-        guard let environment = environment else { return }
-        
-        // Add collectibles based on the environment type
-        for i in 1...15 {
-            // Get a random collectible type for this environment
-            let collectibleType = environment.getRandomCollectibleType()
-            let collectible = Collectible(type: collectibleType)
+    private func endGame() {
+        if GameManager.shared.currentState.status == .playing {
+            GameManager.shared.endGame()
             
-            // Position the collectible
-            let xPos = size.width * 0.5 + CGFloat(i) * 200
-            let yPos = size.height * CGFloat.random(in: 0.3...0.8)
-            collectible.position(at: CGPoint(x: xPos, y: yPos))
-            
-            // Add to scene
-            addChild(collectible.node)
-        }
-    }
-    
-    /// Add world boundaries to keep the airplane within the playable area
-    private func addWorldBoundaries() {
-        // Create invisible boundaries at the top and bottom of the screen
-        let topBoundary = SKNode()
-        topBoundary.position = CGPoint(x: size.width / 2, y: size.height + 50)
-        topBoundary.physicsBody = SKPhysicsBody(rectangleOf: CGSize(width: size.width * 3, height: 100))
-        topBoundary.physicsBody?.isDynamic = false
-        topBoundary.physicsBody?.categoryBitMask = PhysicsCategory.boundary
-        topBoundary.physicsBody?.collisionBitMask = PhysicsCategory.airplane
-        topBoundary.physicsBody?.contactTestBitMask = PhysicsCategory.airplane
-        addChild(topBoundary)
-        
-        // Bottom boundary is handled by the ground
-    }
-    
-    /// Set up the heads-up display (HUD)
-    private func setupHUD() {
-        // Create speed label
-        speedLabel = SKLabelNode(text: "Speed: 0")
-        speedLabel?.fontName = "AvenirNext-Bold"
-        speedLabel?.fontSize = 18
-        speedLabel?.fontColor = .white
-        speedLabel?.horizontalAlignmentMode = .left
-        speedLabel?.position = CGPoint(x: 20, y: size.height - 30)
-        cameraNode?.addChild(speedLabel!)
-        
-        // Create altitude label
-        altitudeLabel = SKLabelNode(text: "Altitude: 0")
-        altitudeLabel?.fontName = "AvenirNext-Bold"
-        altitudeLabel?.fontSize = 18
-        altitudeLabel?.fontColor = .white
-        altitudeLabel?.horizontalAlignmentMode = .left
-        altitudeLabel?.position = CGPoint(x: 20, y: size.height - 60)
-        cameraNode?.addChild(altitudeLabel!)
-        
-        // Create score label
-        scoreLabel = SKLabelNode(text: "Score: 0")
-        scoreLabel?.fontName = "AvenirNext-Bold"
-        scoreLabel?.fontSize = 18
-        scoreLabel?.fontColor = .white
-        scoreLabel?.horizontalAlignmentMode = .left
-        scoreLabel?.position = CGPoint(x: 20, y: size.height - 90)
-        cameraNode?.addChild(scoreLabel!)
-        
-        // Create pause button
-        pauseButton = SKSpriteNode(color: .white, size: CGSize(width: 40, height: 40))
-        pauseButton?.position = CGPoint(x: size.width - 40, y: size.height - 40)
-        pauseButton?.name = "pauseButton"
-        cameraNode?.addChild(pauseButton!)
-    }
-    
-    /// Set up wind effects for the current environment
-    private func setupWind() {
-        guard let environment = environment else { return }
-        
-        // Get random wind direction and strength based on environment
-        let (windDirection, windStrength) = environment.getRandomWind()
-        
-        // Set wind vector in physics manager
-        PhysicsManager.shared.setWindVector(direction: windDirection, strength: windStrength)
-        
-        // Add wind particle effects
-        addWindParticles()
-    }
-    
-    /// Add wind particle effects to visualize wind direction
-    private func addWindParticles() {
-        guard let environment = environment else { return }
-        
-        // Create wind particles at different positions based on environment
-        for _ in 0..<5 {
-            if let windParticle = SKEmitterNode(fileNamed: "WindParticle") {
-                // Position randomly within the scene
-                windParticle.position = CGPoint(
-                    x: CGFloat.random(in: 0...(size.width * 3)),
-                    y: CGFloat.random(in: (size.height * 0.2)...(size.height * 0.8))
+            // Submit score to Game Center if available
+            if GameCenterManager.shared.isGameCenterAvailable {
+                // Determine which leaderboard to use based on game mode
+                let leaderboardID: String
+                
+                switch GameManager.shared.currentMode {
+                case .freePlay:
+                    leaderboardID = GameCenterConfig.Leaderboards.distanceFreePlay
+                case .challenge:
+                    leaderboardID = GameCenterConfig.Leaderboards.distanceChallenge
+                case .dailyRun:
+                    leaderboardID = GameCenterConfig.Leaderboards.distanceDailyRun
+                case .tutorial:
+                    leaderboardID = GameCenterConfig.Leaderboards.distanceFreePlay // Use free play leaderboard for tutorial
+                case .weeklySpecial:
+                    leaderboardID = GameCenterConfig.Leaderboards.distanceWeeklySpecial
+                }
+                
+                // Submit score
+                GameCenterManager.shared.submitScore(
+                    Int(GameManager.shared.distanceTraveled),
+                    to: leaderboardID,
+                    completion: { error in
+                        if let error = error {
+                            print("Error submitting score: \(error.localizedDescription)")
+                        }
+                    }
                 )
                 
-                // Adjust particle direction based on wind vector
-                let windVector = PhysicsManager.shared.windVector
-                if let windAngle = atan2(windVector.dy, windVector.dx) as CGFloat? {
-                    // Convert to degrees and adjust emitter angle
-                    let angleDegrees = windAngle * 180 / .pi
-                    windParticle.emissionAngle = angleDegrees
-                    
-                    // Adjust particle speed based on wind strength
-                    if let windStrength = windVector.length {
-                        windParticle.particleSpeed = windStrength * 2
-                    }
-                }
-                
-                // Adjust particle properties based on environment
-                switch environment.weatherCondition {
-                case .clear:
-                    windParticle.particleBirthRate *= 0.5
-                case .lightWind:
-                    // Default settings
-                    break
-                case .strongWind:
-                    windParticle.particleBirthRate *= 2.0
-                    windParticle.particleLifetime *= 1.5
-                case .variable:
-                    // Random variation
-                    windParticle.particleBirthRate *= CGFloat.random(in: 0.5...2.0)
-                }
-                
-                // Add to scene
-                windParticle.zPosition = -6
-                addChild(windParticle)
+                // Report achievements based on distance and time
+                GameCenterManager.shared.trackAchievementProgress()
             }
+            
+            // Show game over menu
+            showGameOverMenu()
         }
     }
     
-    // MARK: - Update Methods
+    private func showPauseMenu() {
+        // Create pause menu with modern design
+        let pauseMenu = SKNode()
+        pauseMenu.name = "pauseMenu"
+        pauseMenu.zPosition = 1000
+        
+        // Frosted glass background
+        let background = SKShapeNode(rectOf: CGSize(width: 320, height: 400), cornerRadius: 24)
+        background.fillColor = .black
+        background.strokeColor = .white
+        background.alpha = 0.85
+        pauseMenu.addChild(background)
+        
+        // Title with Helvetica Bold
+        let titleLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+        titleLabel.text = "Paused"
+        titleLabel.fontSize = 32
+        titleLabel.fontColor = .white
+        titleLabel.position = CGPoint(x: 0, y: 120)
+        pauseMenu.addChild(titleLabel)
+        
+        // Stats display
+        let statsContainer = SKNode()
+        statsContainer.position = CGPoint(x: 0, y: 40)
+        
+        let scoreDisplay = createStatDisplay(
+            title: "Score",
+            value: "\(GameManager.shared.score)",
+            position: CGPoint(x: 0, y: 40)
+        )
+        statsContainer.addChild(scoreDisplay)
+        
+        let distanceDisplay = createStatDisplay(
+            title: "Distance",
+            value: "\(Int(GameManager.shared.distanceTraveled))m",
+            position: CGPoint(x: 0, y: 0)
+        )
+        statsContainer.addChild(distanceDisplay)
+        
+        let timeDisplay = createStatDisplay(
+            title: "Time",
+            value: "\(Int(GameManager.shared.gameTime))s",
+            position: CGPoint(x: 0, y: -40)
+        )
+        statsContainer.addChild(timeDisplay)
+        
+        pauseMenu.addChild(statsContainer)
+        
+        // Modern buttons
+        let resumeButton = createMenuButton(
+            title: "Resume",
+            icon: "play.fill",
+            color: .systemGreen,
+            position: CGPoint(x: 0, y: -60)
+        )
+        resumeButton.name = "resumeButton"
+        pauseMenu.addChild(resumeButton)
+        
+        let quitButton = createMenuButton(
+            title: "Quit",
+            icon: "xmark",
+            color: .systemRed,
+            position: CGPoint(x: 0, y: -120)
+        )
+        quitButton.name = "quitButton"
+        pauseMenu.addChild(quitButton)
+        
+        // Add to camera with animation
+        pauseMenu.alpha = 0
+        pauseMenu.position = CGPoint(x: size.width/2, y: size.height/2)
+        cameraNode?.addChild(pauseMenu)
+        
+        pauseMenu.run(SKAction.fadeIn(withDuration: 0.3))
+    }
     
-    override func update(_ currentTime: TimeInterval) {
-        // Skip update if game is paused
-        if isPaused || GameManager.shared.currentState != .playing {
+    private func createStatDisplay(title: String, value: String, position: CGPoint) -> SKNode {
+        let container = SKNode()
+        container.position = position
+        
+        let titleLabel = SKLabelNode(fontNamed: "Helvetica")
+        titleLabel.text = title
+        titleLabel.fontSize = 16
+        titleLabel.fontColor = .gray
+        titleLabel.position = CGPoint(x: -60, y: 0)
+        titleLabel.horizontalAlignmentMode = .left
+        container.addChild(titleLabel)
+        
+        let valueLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+        valueLabel.text = value
+        valueLabel.fontSize = 18
+        valueLabel.fontColor = .white
+        valueLabel.position = CGPoint(x: 60, y: 0)
+        valueLabel.horizontalAlignmentMode = .right
+        container.addChild(valueLabel)
+        
+        return container
+    }
+    
+    private func createMenuButton(title: String, icon: String, color: UIColor, position: CGPoint) -> SKNode {
+        let button = SKNode()
+        button.position = position
+        
+        let background = SKShapeNode(rectOf: CGSize(width: 240, height: 50), cornerRadius: 12)
+        background.fillColor = color
+        background.strokeColor = .clear
+        background.alpha = 0.8
+        button.addChild(background)
+        
+        // Use standard text instead of SF Symbols
+        let iconNode = SKLabelNode(fontNamed: "Helvetica-Bold")
+        // Map common SF Symbol names to standard text characters
+        let iconText: String
+        switch icon {
+        case "play.fill":
+            iconText = "▶️"
+        case "xmark":
+            iconText = "✖️"
+        case "arrow.clockwise":
+            iconText = "↻"
+        case "house.fill":
+            iconText = "⌂"
+        case "square.and.arrow.up":
+            iconText = "↗️"
+        default:
+            iconText = "•"
+        }
+        iconNode.text = iconText
+        iconNode.fontSize = 18
+        iconNode.fontColor = .white
+        iconNode.verticalAlignmentMode = .center
+        iconNode.position = CGPoint(x: -80, y: 0)
+        button.addChild(iconNode)
+        
+        let titleLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+        titleLabel.text = title
+        titleLabel.fontSize = 18
+        titleLabel.fontColor = .white
+        titleLabel.verticalAlignmentMode = .center
+        titleLabel.position = CGPoint(x: 0, y: 0)
+        button.addChild(titleLabel)
+        
+        return button
+    }
+    
+    private func showGameOverMenu() {
+        // Create game over menu with modern design
+        let gameOverMenu = SKNode()
+        gameOverMenu.name = "gameOverMenu"
+        gameOverMenu.zPosition = 1000
+        
+        // Frosted glass background
+        let background = SKShapeNode(rectOf: CGSize(width: 320, height: 480), cornerRadius: 24)
+        background.fillColor = .black
+        background.strokeColor = .white
+        background.alpha = 0.85
+        gameOverMenu.addChild(background)
+        
+        // Title with Helvetica Bold
+        let titleLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+        titleLabel.text = "Flight Over"
+        titleLabel.fontSize = 32
+        titleLabel.fontColor = .white
+        titleLabel.position = CGPoint(x: 0, y: 180)
+        gameOverMenu.addChild(titleLabel)
+        
+        // Stats display
+        let statsContainer = SKNode()
+        statsContainer.position = CGPoint(x: 0, y: 80)
+        
+        let scoreDisplay = createStatDisplay(
+            title: "Final Score",
+            value: "\(GameManager.shared.score)",
+            position: CGPoint(x: 0, y: 40)
+        )
+        statsContainer.addChild(scoreDisplay)
+        
+        let distanceDisplay = createStatDisplay(
+            title: "Distance",
+            value: "\(Int(GameManager.shared.distanceTraveled))m",
+            position: CGPoint(x: 0, y: 0)
+        )
+        statsContainer.addChild(distanceDisplay)
+        
+        let timeDisplay = createStatDisplay(
+            title: "Flight Time",
+            value: "\(Int(GameManager.shared.gameTime))s",
+            position: CGPoint(x: 0, y: -40)
+        )
+        statsContainer.addChild(timeDisplay)
+        
+        // Add high score indicator if applicable
+        if GameManager.shared.score > GameManager.shared.playerData.highScore {
+            let newHighScoreLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
+            newHighScoreLabel.text = "New High Score!"
+            newHighScoreLabel.fontSize = 20
+            newHighScoreLabel.fontColor = .systemYellow
+            newHighScoreLabel.position = CGPoint(x: 0, y: -80)
+            statsContainer.addChild(newHighScoreLabel)
+        }
+        
+        gameOverMenu.addChild(statsContainer)
+        
+        // Modern buttons
+        let retryButton = createMenuButton(
+            title: "Try Again",
+            icon: "arrow.clockwise",
+            color: .systemGreen,
+            position: CGPoint(x: 0, y: -60)
+        )
+        retryButton.name = "retryButton"
+        gameOverMenu.addChild(retryButton)
+        
+        let menuButton = createMenuButton(
+            title: "Main Menu",
+            icon: "house.fill",
+            color: .systemBlue,
+            position: CGPoint(x: 0, y: -120)
+        )
+        menuButton.name = "menuButton"
+        gameOverMenu.addChild(menuButton)
+        
+        // Share button
+        let shareButton = createMenuButton(
+            title: "Share Score",
+            icon: "square.and.arrow.up",
+            color: .systemIndigo,
+            position: CGPoint(x: 0, y: -180)
+        )
+        shareButton.name = "shareButton"
+        gameOverMenu.addChild(shareButton)
+        
+        // Add to camera with animation
+        gameOverMenu.alpha = 0
+        gameOverMenu.position = CGPoint(x: size.width/2, y: size.height/2)
+        cameraNode?.addChild(gameOverMenu)
+        
+        // Animate menu in
+        gameOverMenu.run(SKAction.sequence([
+            SKAction.fadeIn(withDuration: 0.3),
+            SKAction.run {
+                // Add subtle particle effect for visual interest
+                if let emitter = SKEmitterNode(fileNamed: "GameOverParticles") {
+                    emitter.position = CGPoint(x: 0, y: 200)
+                    gameOverMenu.addChild(emitter)
+                }
+            }
+        ]))
+    }
+    
+    // MARK: - Challenge Handling
+    
+    private func processChallengeCode() {
+        guard let challengeCode = challengeCode else { return }
+        
+        // Use GameCenterManager to process the challenge code
+        let (courseID, error) = GameCenterManager.shared.processChallengeCode(challengeCode)
+        
+        if let error = error {
+            print("Error processing challenge code: \(error)")
             return
         }
         
-        // Calculate time since last update
+        if let courseID = courseID {
+            // Store challenge details
+            self.challengeCourseID = courseID
+            // Set default challenge parameters if not specified
+            self.challengeDistance = self.challengeDistance ?? 1000
+            self.challengeTime = self.challengeTime ?? 180
+        }
+        
+        // Update UI with challenge info
+        updateChallengeInfo()
+        
+        // Set up environment based on challenge course
+        if let environmentType = GameEnvironment.EnvironmentType(rawValue: courseID ?? "") {
+            self.environment?.removeFromParent()
+            self.environment = GameEnvironment(type: environmentType, size: self.size)
+            if let environment = self.environment {
+                self.insertChild(environment, at: 0)
+            }
+            
+            // Update parallax background
+            self.parallaxBackground?.update(withCameraPosition: CGPoint.zero)
+        }
+    }
+    
+    private func updateChallengeInfo() {
+        guard GameManager.shared.currentMode == .challenge,
+              let challengeInfoLabel = challengeInfoLabel else { return }
+        
+        var infoText = "Challenge: "
+        
+        if let courseID = challengeCourseID {
+            infoText += courseID
+        }
+        
+        if let distance = challengeDistance {
+            infoText += " - \(distance)m"
+        }
+        
+        if let time = challengeTime {
+            infoText += " - \(time)s"
+        }
+        
+        challengeInfoLabel.text = infoText
+    }
+    
+    // MARK: - Update
+    
+    override func update(_ currentTime: TimeInterval) {
+        // Calculate delta time
         if lastUpdateTime == 0 {
             lastUpdateTime = currentTime
         }
-        let dt = currentTime - lastUpdateTime
+        dt = currentTime - lastUpdateTime
         lastUpdateTime = currentTime
         
-        // Update game elements
-        updateAirplane(deltaTime: dt)
-        updateCamera()
-        updateHUD()
-        updateGameState(deltaTime: dt)
-        updateParallaxBackground()
-        
-        // Occasionally update wind to create variation
-        if Int.random(in: 0...100) < 2 { // 2% chance per frame
-            updateRandomWind()
+        // Only update if game is running
+        if GameManager.shared.currentState.status == .playing {
+            // Update game manager
+            GameManager.shared.update(currentTime)
+            
+            // Update custom physics synced with frame loop
+            PhysicsManager.shared.update(deltaTime: dt)
+            
+            // Update airplane physics based on tilt
+            updateAirplanePhysics()
+            
+            // Update camera position
+            updateCameraPosition()
+            
+            // Generate new chunks ahead of camera for infinite gameplay
+            generateChunksIfNeeded()
+            
+            // Cull offscreen nodes to prevent memory growth
+            cullOffscreenNodes()
+            
+            // Update UI
+            updateUI()
+            
+            // Update parallax background
+            if let cameraNode = cameraNode {
+                parallaxBackground?.update(withCameraPosition: cameraNode.position)
+            }
+            
+            // Check for game over conditions
+            checkGameOver()
         }
     }
     
-    /// Update the paper airplane's state
-    private func updateAirplane(deltaTime: TimeInterval) {
-        guard let paperAirplane = paperAirplane, let physicsBody = paperAirplane.node.physicsBody else { return }
+    private func updateAirplanePhysics() {
+        guard let airplane = airplane else { return }
         
-        // Calculate current speed
-        let velocity = physicsBody.velocity
-        let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
-        paperAirplane.speed = speed
+        // PhysicsService handles device motion and applies forces automatically
+        // We just need to ensure the airplane is set in the physics service
+        // This happens when applyForces is called, but we can also set it explicitly
+        // The PhysicsService will handle tilt via device motion updates
         
-        // Update distance traveled
-        if speed > 0 {
-            distanceTraveled += speed * CGFloat(deltaTime)
-            GameManager.shared.sessionData.distance = Float(distanceTraveled / 100.0) // Convert to meters for game purposes
-        }
-        
-        // Apply lift force based on current speed and airplane properties
-        paperAirplane.applyLift()
-        
-        // Check if airplane is below minimum speed (stalling)
-        if speed < paperAirplane.minSpeed {
-            // Apply a small downward force to simulate stalling
-            let stallForce = CGVector(dx: 0, dy: -10.0)
-            physicsBody.applyForce(stallForce)
-        }
-        
-        // Apply air resistance based on speed
-        let airResistance = GameConfig.Physics.airResistance
-        let resistanceForce = CGVector(
-            dx: -velocity.dx * airResistance,
-            dy: -velocity.dy * airResistance
-        )
-        physicsBody.applyForce(resistanceForce)
-        
-        // Update airplane rotation to match velocity direction for more realistic flight
-        if speed > paperAirplane.minSpeed {
-            let targetAngle = atan2(velocity.dy, velocity.dx)
-            let currentAngle = paperAirplane.node.zRotation
+        // Update distance based on airplane movement
+        if let physicsBody = airplane.physicsBody {
+            let speed = sqrt(physicsBody.velocity.dx * physicsBody.velocity.dx + 
+                            physicsBody.velocity.dy * physicsBody.velocity.dy)
             
-            // Smoothly rotate to target angle
-            let rotationSpeed: CGFloat = 2.0
-            let angleDifference = targetAngle - currentAngle
-            
-            // Normalize angle difference to [-π, π]
-            var normalizedDifference = angleDifference
-            while normalizedDifference > .pi {
-                normalizedDifference -= 2 * .pi
-            }
-            while normalizedDifference < -.pi {
-                normalizedDifference += 2 * .pi
-            }
-            
-            // Apply rotation based on difference
-            paperAirplane.node.zRotation += normalizedDifference * rotationSpeed * CGFloat(deltaTime)
+            // Add distance based on speed
+            GameManager.shared.addDistance(Float(speed * CGFloat(dt) * 0.1))
         }
     }
     
-    /// Update the camera to follow the airplane
-    private func updateCamera() {
-        guard let paperAirplane = paperAirplane, let cameraNode = cameraNode else { return }
+    private func updateCameraPosition() {
+        guard let airplane = airplane, let cameraNode = cameraNode else { return }
         
-        // Calculate target position (slightly ahead of the airplane in the direction of travel)
-        let airplanePosition = paperAirplane.node.position
-        let velocity = paperAirplane.node.physicsBody?.velocity ?? CGVector(dx: 0, dy: 0)
-        let lookAheadDistance: CGFloat = 200.0
+        // Camera follows airplane with some lag
+        let cameraLag: CGFloat = 0.1
+        let targetPosition = airplane.position
         
-        // Normalize velocity vector
-        let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
-        let normalizedVelocity = speed > 0 ? CGVector(dx: velocity.dx / speed, dy: velocity.dy / speed) : CGVector(dx: 1, dy: 0)
-        
-        // Calculate target position
-        let targetX = airplanePosition.x + normalizedVelocity.dx * lookAheadDistance
-        let targetY = airplanePosition.y + normalizedVelocity.dy * lookAheadDistance
-        
-        // Smoothly move camera to target position
-        let smoothingFactor: CGFloat = 0.1
-        let newX = cameraNode.position.x + (targetX - cameraNode.position.x) * smoothingFactor
-        let newY = cameraNode.position.y + (targetY - cameraNode.position.y) * smoothingFactor
+        let newX = cameraNode.position.x + (targetPosition.x - cameraNode.position.x) * cameraLag
+        let newY = cameraNode.position.y + (targetPosition.y - cameraNode.position.y) * cameraLag
         
         cameraNode.position = CGPoint(x: newX, y: newY)
     }
     
-    /// Update the HUD elements
-    private func updateHUD() {
-        guard let paperAirplane = paperAirplane else { return }
-        
-        // Update speed label
-        let speedKmh = Int(paperAirplane.speed * 0.1) // Convert to km/h for display
-        speedLabel?.text = "Speed: \(speedKmh) km/h"
-        
-        // Update altitude label
-        let altitude = Int(paperAirplane.node.position.y)
-        altitudeLabel?.text = "Altitude: \(altitude) m"
-        
+    private func updateUI() {
         // Update score label
-        let score = GameManager.shared.sessionData.score
-        scoreLabel?.text = "Score: \(score)"
-    }
-    
-    /// Update the overall game state
-    private func updateGameState(deltaTime: TimeInterval) {
-        // Update session time
-        GameManager.shared.sessionData.timeElapsed += deltaTime
+        scoreLabel?.text = "Score: \(GameManager.shared.score)"
         
-        // Check for game over conditions
-        checkGameOverConditions()
-    }
-    
-    /// Check if any game over conditions are met
-    private func checkGameOverConditions() {
-        guard let paperAirplane = paperAirplane else { return }
+        // Update distance label
+        distanceLabel?.text = "Distance: \(Int(GameManager.shared.distanceTraveled))m"
         
-        // Check if airplane is too low (crashed)
-        if paperAirplane.node.position.y < 50 {
-            gameOver(reason: "Crashed")
+        // Update time label
+        timeLabel?.text = "Time: \(Int(GameManager.shared.gameTime))s"
+        
+        // Check if challenge goals are met
+        if GameManager.shared.currentMode == .challenge {
+            if let challengeDistance = challengeDistance, 
+               Int(GameManager.shared.distanceTraveled) >= challengeDistance {
+                // Challenge distance goal met
+                challengeInfoLabel?.fontColor = .green
+                
+                // End game if both goals are met
+                if let challengeTime = challengeTime, 
+                   Int(GameManager.shared.gameTime) <= challengeTime {
+                    // Both goals met - challenge completed
+                    completeChallenge()
+                }
+            } else if let challengeTime = challengeTime, 
+                      Int(GameManager.shared.gameTime) > challengeTime {
+                // Time limit exceeded
+                challengeInfoLabel?.fontColor = .red
+                
+                // End game if time limit is the only goal
+                if challengeDistance == nil {
+                    endGame()
+                }
+            }
         }
+    }
+    
+    private func checkGameOver() {
+        guard let airplane = airplane else { return }
         
         // Check if airplane is out of bounds
-        if paperAirplane.node.position.x < -500 || paperAirplane.node.position.x > size.width * 3 + 500 {
-            gameOver(reason: "Out of bounds")
+        let margin: CGFloat = 1000 // Allow some margin beyond screen edges
+        let minX = -margin
+        let maxX = size.width + margin
+        let minY = -margin
+        let maxY = size.height + margin
+        
+        if airplane.position.x < minX || airplane.position.x > maxX ||
+           airplane.position.y < minY || airplane.position.y > maxY {
+            endGame()
         }
     }
     
-    /// Handle game over
-    private func gameOver(reason: String) {
+    /// Generate chunks of level content ahead of the camera for infinite gameplay
+    private func generateChunksIfNeeded() {
+        guard let cameraX = cameraNode?.position.x else { return }
+        let generateThreshold = cameraX + generateAheadDistance
+        
+        // Generate chunks until we're ahead of the camera
+        while lastChunkX < generateThreshold {
+            spawnChunk(at: lastChunkX)
+            lastChunkX += chunkWidth
+        }
+    }
+    
+    /// Spawn a chunk of level content at the specified X position
+    /// - Parameter x: The X position where the chunk should be spawned
+    private func spawnChunk(at x: CGFloat) {
+        // Spawn obstacles in this chunk (2-5 obstacles per chunk)
+        let obstacleCount = Int.random(in: 2...5)
+        for _ in 0..<obstacleCount {
+            let obstacleX = x + CGFloat.random(in: 0...chunkWidth)
+            spawnObstacle(at: CGPoint(x: obstacleX, y: CGFloat.random(in: -size.height/3...size.height/3)))
+        }
+        
+        // Spawn collectibles in this chunk (3-8 collectibles per chunk)
+        let collectibleCount = Int.random(in: 3...8)
+        for _ in 0..<collectibleCount {
+            let collectibleX = x + CGFloat.random(in: 0...chunkWidth)
+            spawnCollectible(at: CGPoint(x: collectibleX, y: CGFloat.random(in: -size.height/3...size.height/3)))
+        }
+    }
+    
+    /// Spawn an obstacle at the specified position
+    /// - Parameter position: The position where the obstacle should be spawned
+    private func spawnObstacle(at position: CGPoint) {
+        // Use Obstacle class if available, otherwise create a simple sprite
+        let obstacleType = ObstacleType.allCases.randomElement() ?? .tree
+        let obstacle = Obstacle(type: obstacleType)
+        obstacle.position(at: position)
+        obstacle.applyVisualEffects()
+        
+        obstacle.node.name = "obstacle_\(obstacleType.rawValue)"
+        addChild(obstacle.node)
+    }
+    
+    /// Spawn a collectible at the specified position
+    /// - Parameter position: The position where the collectible should be spawned
+    private func spawnCollectible(at position: CGPoint) {
+        // Use Collectible class if available, otherwise create a simple sprite
+        let collectibleType = CollectibleType.allCases.randomElement() ?? .coin
+        let collectible = Collectible(type: collectibleType)
+        collectible.position(at: position)
+        
+        collectible.node.name = "collectible_\(collectibleType.rawValue)"
+        addChild(collectible.node)
+    }
+    
+    /// Cull offscreen nodes to prevent memory growth
+    /// Removes obstacles, collectibles, and other game nodes that are behind the camera
+    private func cullOffscreenNodes() {
+        let cullingDistance = GameConfig.Performance.cullingDistance
+        guard let cameraX = cameraNode?.position.x else { return }
+        let cullThreshold = cameraX - cullingDistance
+        
+        // Cull nodes by category bit mask
+        enumerateChildNodes(withName: "//*") { [weak self] node, _ in
+            guard let self = self,
+                  let physicsBody = node.physicsBody else { return }
+            
+            // Check if node is an obstacle or collectible
+            let isObstacle = (physicsBody.categoryBitMask & PhysicsCategory.obstacle) != 0
+            let isCollectible = (physicsBody.categoryBitMask & PhysicsCategory.collectible) != 0
+            
+            // Remove if behind camera beyond culling distance
+            if (isObstacle || isCollectible) && node.position.x < cullThreshold {
+                node.removeFromParent()
+            }
+        }
+        
+        // Also cull environment nodes that are far behind
+        if let environment = environment {
+            environment.enumerateChildNodes(withName: "//*") { node, _ in
+                if node.position.x < cullThreshold - 500 { // Extra margin for environment
+                    node.removeFromParent()
+                }
+            }
+        }
+    }
+    
+    private func completeChallenge() {
+        // Mark challenge as completed
+        if let courseID = challengeCourseID {
+            // Add to completed challenges
+            var completedChallenges = GameManager.shared.playerData.completedChallenges
+            if completedChallenges < 1 {
+                completedChallenges = 1
+            } else {
+                completedChallenges += 1
+            }
+            GameManager.shared.playerData.completedChallenges = completedChallenges
+            
+            // Report achievement for completing challenges
+            GameCenterManager.shared.trackAchievementProgress()
+            
+            // Log completion
+            print("Challenge completed: \(courseID)")
+        }
+        
         // End the game
-        GameManager.shared.endGame()
-        
-        // Show game over message
-        let gameOverLabel = SKLabelNode(text: "Game Over: \(reason)")
-        gameOverLabel.fontName = "AvenirNext-Bold"
-        gameOverLabel.fontSize = 36
-        gameOverLabel.fontColor = .white
-        gameOverLabel.position = CGPoint(x: 0, y: 0)
-        cameraNode?.addChild(gameOverLabel)
-        
-        // Add restart button
-        let restartButton = SKSpriteNode(color: .white, size: CGSize(width: 200, height: 60))
-        restartButton.position = CGPoint(x: 0, y: -100)
-        restartButton.name = "restartButton"
-        
-        let restartLabel = SKLabelNode(text: "Restart")
-        restartLabel.fontName = "AvenirNext-Bold"
-        restartLabel.fontSize = 24
-        restartLabel.fontColor = .blue
-        restartLabel.verticalAlignmentMode = .center
-        restartButton.addChild(restartLabel)
-        
-        cameraNode?.addChild(restartButton)
-        
-        // Add menu button
-        let menuButton = SKSpriteNode(color: .white, size: CGSize(width: 200, height: 60))
-        menuButton.position = CGPoint(x: 0, y: -180)
-        menuButton.name = "menuButton"
-        
-        let menuLabel = SKLabelNode(text: "Main Menu")
-        menuLabel.fontName = "AvenirNext-Bold"
-        menuLabel.fontSize = 24
-        menuLabel.fontColor = .blue
-        menuLabel.verticalAlignmentMode = .center
-        menuButton.addChild(menuLabel)
-        
-        cameraNode?.addChild(menuButton)
-    }
-    
-    /// Update the parallax background based on camera position
-    private func updateParallaxBackground() {
-        guard let cameraNode = cameraNode else { return }
-        parallaxBackground?.update(withCameraPosition: cameraNode.position)
-    }
-    
-    /// Update wind with random variations based on environment
-    private func updateRandomWind() {
-        guard let environment = environment else { return }
-        
-        // Get new random wind based on environment
-        let (windDirection, windStrength) = environment.getRandomWind()
-        
-        // Gradually transition to new wind
-        PhysicsManager.shared.transitionWindVector(
-            toDirection: windDirection,
-            strength: windStrength,
-            duration: 3.0
-        )
+        endGame()
     }
     
     // MARK: - Touch Handling
@@ -616,220 +944,313 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
         
-        // Convert touch location to camera's coordinate space for HUD elements
-        let locationInCamera = convertPoint(fromScene: location)
+        // Convert touch location to camera's coordinate space for UI elements
+        // This commented line was causing a warning because the variable was not used
+        // let locationInCamera = convert(location, to: cameraNode!)
         
-        // Check if pause button was tapped
-        if let pauseButton = pauseButton, pauseButton.contains(locationInCamera) {
-            togglePause()
-            return
-        }
-        
-        // Check if restart button was tapped
-        if GameManager.shared.currentState == .gameOver {
-            let nodes = self.nodes(at: locationInCamera)
-            for node in nodes {
-                if node.name == "restartButton" {
-                    restartGame()
-                    return
-                } else if node.name == "menuButton" {
-                    returnToMainMenu()
-                    return
-                }
+        // Check if UI container or its children were tapped
+        if let uiContainer = cameraNode?.childNode(withName: "uiContainer") {
+            
+            // Check if pause button was tapped
+            if let pauseButton = pauseButton, pauseButton.contains(convert(location, to: pauseButton.parent!)) {
+                print("Pause button tapped")
+                pauseGame()
+                return
+            }
+            
+            // Check for game controls
+            if let restartButton = uiContainer.childNode(withName: "restartButton"),
+               restartButton.contains(convert(location, to: restartButton.parent!)) {
+                print("Restart button tapped")
+                restartScene()
+                return
+            }
+            
+            if let homeButton = uiContainer.childNode(withName: "homeButton"),
+               homeButton.contains(convert(location, to: homeButton.parent!)) {
+                print("Home button tapped")
+                returnToMainMenu()
+                return
+            }
+            
+            if let shareButton = uiContainer.childNode(withName: "shareButton"),
+               shareButton.contains(convert(location, to: shareButton.parent!)) {
+                print("Share button tapped")
+                shareScore()
+                return
             }
         }
         
-        // If game is playing, apply a small upward thrust on tap (optional touch control)
-        if GameManager.shared.currentState == .playing && !isPaused {
-            paperAirplane?.applyThrust(amount: 30.0)
-        }
-    }
-    
-    /// Toggle pause state
-    private func togglePause() {
-        isPaused = !isPaused
-        
-        if isPaused {
-            // Pause the game
-            GameManager.shared.pauseGame()
-            PhysicsManager.shared.stopPhysicsSimulation()
+        // Handle pause menu buttons
+        if let pauseMenu = cameraNode?.childNode(withName: "pauseMenu") {
+            let locationInMenu = convert(location, to: pauseMenu)
             
-            // Show pause menu
-            showPauseMenu()
-        } else {
-            // Resume the game
-            GameManager.shared.resumeGame()
-            PhysicsManager.shared.startPhysicsSimulation()
+            if let resumeButton = pauseMenu.childNode(withName: "resumeButton"),
+               resumeButton.contains(locationInMenu) {
+                // Resume game
+                pauseMenu.removeFromParent()
+                resumeGame()
+                return
+            }
             
-            // Hide pause menu
-            hidePauseMenu()
+            if let quitButton = pauseMenu.childNode(withName: "quitButton"),
+               quitButton.contains(locationInMenu) {
+                // Quit to main menu
+                pauseMenu.removeFromParent()
+                returnToMainMenu()
+                return
+            }
+        }
+        
+        // Handle game over menu buttons
+        if let gameOverMenu = cameraNode?.childNode(withName: "gameOverMenu") {
+            let locationInMenu = convert(location, to: gameOverMenu)
+            
+            if let retryButton = gameOverMenu.childNode(withName: "retryButton"),
+               retryButton.contains(locationInMenu) {
+                // Retry - restart the scene
+                restartScene()
+                return
+            }
+            
+            if let menuButton = gameOverMenu.childNode(withName: "menuButton"),
+               menuButton.contains(locationInMenu) {
+                // Return to main menu
+                returnToMainMenu()
+                return
+            }
+            
+            if let shareButton = gameOverMenu.childNode(withName: "shareButton"),
+               shareButton.contains(locationInMenu) {
+                // Share score
+                shareScore()
+                return
+            }
         }
     }
     
-    /// Show the pause menu
-    private func showPauseMenu() {
-        // Create pause menu background
-        let pauseBackground = SKSpriteNode(color: SKColor.black.withAlphaComponent(0.5), size: size)
-        pauseBackground.position = CGPoint.zero
-        pauseBackground.name = "pauseBackground"
+    // Method to share score
+    private func shareScore() {
+        print("Sharing score: \(GameManager.shared.score)")
         
-        // Create resume button
-        let resumeButton = SKSpriteNode(color: .white, size: CGSize(width: 200, height: 60))
-        resumeButton.position = CGPoint(x: 0, y: 50)
-        resumeButton.name = "resumeButton"
+        // Pause the game if playing
+        if GameManager.shared.currentState.status == .playing {
+            pauseGame()
+        }
         
-        let resumeLabel = SKLabelNode(text: "Resume")
-        resumeLabel.fontName = "AvenirNext-Bold"
-        resumeLabel.fontSize = 24
-        resumeLabel.fontColor = .blue
-        resumeLabel.verticalAlignmentMode = .center
-        resumeButton.addChild(resumeLabel)
+        // Prepare the text to share
+        let shareText = "I scored \(GameManager.shared.score) points and traveled \(Int(GameManager.shared.distanceTraveled))m in Tiny Pilots!"
         
-        // Create main menu button
-        let menuButton = SKSpriteNode(color: .white, size: CGSize(width: 200, height: 60))
-        menuButton.position = CGPoint(x: 0, y: -50)
-        menuButton.name = "menuButton"
+        // Create activity view controller for sharing
+        let activityViewController = UIActivityViewController(
+            activityItems: [shareText],
+            applicationActivities: nil
+        )
         
-        let menuLabel = SKLabelNode(text: "Main Menu")
-        menuLabel.fontName = "AvenirNext-Bold"
-        menuLabel.fontSize = 24
-        menuLabel.fontColor = .blue
-        menuLabel.verticalAlignmentMode = .center
-        menuButton.addChild(menuLabel)
-        
-        // Add to camera
-        pauseBackground.addChild(resumeButton)
-        pauseBackground.addChild(menuButton)
-        cameraNode?.addChild(pauseBackground)
-    }
-    
-    /// Hide the pause menu
-    private func hidePauseMenu() {
-        cameraNode?.childNode(withName: "pauseBackground")?.removeFromParent()
-    }
-    
-    /// Restart the game
-    private func restartGame() {
-        // Create a new flight scene with the same game mode
-        if let view = view {
-            let newScene = FlightScene(size: size, mode: gameMode)
-            newScene.scaleMode = scaleMode
-            view.presentScene(newScene, transition: SKTransition.fade(withDuration: 0.5))
+        // Present the view controller
+        if let viewController = self.scene?.view?.window?.rootViewController {
+            viewController.present(activityViewController, animated: true, completion: nil)
         }
     }
     
-    /// Return to the main menu
-    private func returnToMainMenu() {
-        // Create a new main menu scene
-        if let view = view {
-            let menuScene = MainMenuScene(size: size)
-            menuScene.scaleMode = scaleMode
-            view.presentScene(menuScene, transition: SKTransition.fade(withDuration: 0.5))
-        }
-    }
-    
-    // MARK: - Physics Contact Delegate
+    // MARK: - Physics Contact
     
     func didBegin(_ contact: SKPhysicsContact) {
-        // Sort the bodies by category
-        var firstBody: SKPhysicsBody
-        var secondBody: SKPhysicsBody
+        let collision = contact.bodyA.categoryBitMask | contact.bodyB.categoryBitMask
         
-        if contact.bodyA.categoryBitMask < contact.bodyB.categoryBitMask {
-            firstBody = contact.bodyA
-            secondBody = contact.bodyB
-        } else {
-            firstBody = contact.bodyB
-            secondBody = contact.bodyA
+        // Check for airplane collision with obstacle
+        if collision == PhysicsCategory.airplane | PhysicsCategory.obstacle {
+            // Handle collision with obstacle
+            handleObstacleCollision()
         }
         
-        // Handle different collision types
-        
-        // Airplane collided with obstacle
-        if (firstBody.categoryBitMask & PhysicsCategory.airplane != 0) &&
-           (secondBody.categoryBitMask & PhysicsCategory.obstacle != 0) {
-            handleObstacleCollision(airplane: firstBody.node!, obstacle: secondBody.node!)
+        // Check for airplane collision with collectible
+        if collision == PhysicsCategory.airplane | PhysicsCategory.collectible {
+            // Handle collision with collectible
+            handleCollectibleCollision(contact)
         }
         
-        // Airplane collided with collectible
-        if (firstBody.categoryBitMask & PhysicsCategory.airplane != 0) &&
-           (secondBody.categoryBitMask & PhysicsCategory.collectible != 0) {
-            handleCollectibleCollection(airplane: firstBody.node!, collectible: secondBody.node!)
-        }
-        
-        // Airplane collided with ground
-        if (firstBody.categoryBitMask & PhysicsCategory.airplane != 0) &&
-           (secondBody.categoryBitMask & PhysicsCategory.ground != 0) {
-            handleGroundCollision(airplane: firstBody.node!, ground: secondBody.node!)
+        // Check for airplane collision with ground
+        if collision == PhysicsCategory.airplane | PhysicsCategory.ground {
+            // Handle collision with ground
+            handleGroundCollision()
         }
     }
     
-    /// Handle collision between airplane and obstacle
-    private func handleObstacleCollision(airplane: SKNode, obstacle: SKNode) {
-        // Apply impact effect to the airplane
-        paperAirplane?.handleImpact()
+    private func handleObstacleCollision() {
+        // Reduce score using GameManager's method
+        GameManager.shared.adjustScoreForObstacle()
         
-        // Increment obstacles avoided counter (for scoring)
-        GameManager.shared.sessionData.obstaclesAvoided += 1
+        // Haptic feedback for collision
+        impactGenerator.impactOccurred()
+        impactGenerator.prepare() // Prepare for next impact
         
         // Visual feedback
-        let flashAction = SKAction.sequence([
+        airplane?.run(SKAction.sequence([
             SKAction.colorize(with: .red, colorBlendFactor: 0.5, duration: 0.1),
-            SKAction.colorize(with: .white, colorBlendFactor: 0.0, duration: 0.1)
-        ])
-        obstacle.run(flashAction)
+            SKAction.colorize(withColorBlendFactor: 0.0, duration: 0.1)
+        ]))
+        
+        // Play sound effect
+        audioService?.playSound("collision")
     }
     
-    /// Handle collection of a collectible item
-    private func handleCollectibleCollection(airplane: SKNode, collectible: SKNode) {
-        // Find the collectible object
-        if let collectibleNode = collectible as? SKSpriteNode,
-           let collectibleName = collectibleNode.name,
-           collectibleName.hasPrefix("collectible_") {
-            
-            // Call the collect method on the Collectible object
-            for child in children {
-                if child === collectibleNode {
-                    // Find the collectible type from the node name
-                    let typeName = collectibleName.replacingOccurrences(of: "collectible_", with: "")
-                    
-                    // Determine point value based on type
-                    var pointValue = 10 // Default value
-                    
-                    if typeName == "star" {
-                        pointValue = 10
-                    } else if typeName == "coin" {
-                        pointValue = 5
-                    } else if typeName == "gem" {
-                        pointValue = 20
-                    } else if typeName == "shell" {
-                        pointValue = 15
-                    }
-                    
-                    // Update game data
-                    GameManager.shared.sessionData.collectiblesGathered += 1
-                    GameManager.shared.sessionData.score += pointValue
-                    
-                    // Visual and audio feedback
-                    let collectAction = SKAction.group([
-                        SKAction.scale(to: 1.5, duration: 0.2),
-                        SKAction.fadeOut(withDuration: 0.2)
-                    ])
-                    
-                    collectible.run(SKAction.sequence([
-                        collectAction,
-                        SKAction.removeFromParent()
-                    ]))
-                    
-                    break
-                }
-            }
+    private func handleCollectibleCollision(_ contact: SKPhysicsContact) {
+        // Determine which body is the collectible
+        let collectibleBody = (contact.bodyA.categoryBitMask == PhysicsCategory.collectible) ? 
+                              contact.bodyA : contact.bodyB
+        
+        // Remove the collectible
+        collectibleBody.node?.removeFromParent()
+        
+        // Add coin (this will indirectly update the score in GameManager)
+        GameManager.shared.addCoin()
+        
+        // Haptic feedback for collection (success notification)
+        notificationGenerator.notificationOccurred(.success)
+        notificationGenerator.prepare() // Prepare for next notification
+        
+        // Visual feedback
+        audioService?.playSound("coin")
+    }
+    
+    private func handleGroundCollision() {
+        // Haptic feedback for ground collision (error notification)
+        notificationGenerator.notificationOccurred(.error)
+        
+        // End the game on ground collision
+        endGame()
+    }
+    
+    // MARK: - Scene Management
+    
+    private func restartScene() {
+        // Create a new scene of the same type
+        let newScene: FlightScene
+        
+        if GameManager.shared.currentMode == .challenge, let challengeCode = challengeCode {
+            newScene = FlightScene(size: size, challengeCode: challengeCode)
+        } else {
+            let mode = convertFromGameStateMode(GameManager.shared.currentMode)
+            newScene = FlightScene(size: size, mode: mode)
+        }
+        
+        // Transition to the new scene
+        let transition = SKTransition.fade(withDuration: 0.5)
+        view?.presentScene(newScene, transition: transition)
+    }
+    
+    private func returnToMainMenu() {
+        // Create main menu scene
+        let mainMenuScene = MainMenuScene(size: size)
+        
+        // Transition to main menu
+        let transition = SKTransition.fade(withDuration: 0.5)
+        view?.presentScene(mainMenuScene, transition: transition)
+    }
+    
+    // MARK: - Scene Presentation
+    
+    class func newScene(size: CGSize, mode: GameManager.GameMode, challengeCode: String? = nil) -> FlightScene {
+        if let challengeCode = challengeCode {
+            return FlightScene(size: size, challengeCode: challengeCode)
+        } else {
+            return FlightScene(size: size, mode: mode)
+        }
+    }
+
+    private func convertToGameStateMode(_ mode: GameManager.GameMode) -> GameState.Mode {
+        switch mode {
+        case .tutorial: return .tutorial
+        case .freePlay: return .freePlay
+        case .challenge: return .challenge
+        case .dailyRun: return .dailyRun
+        case .weeklySpecial: return .weeklySpecial
+        }
+    }
+
+    private func convertFromGameStateMode(_ mode: GameState.Mode) -> GameManager.GameMode {
+        switch mode {
+        case .tutorial: return .tutorial
+        case .freePlay: return .freePlay
+        case .challenge: return .challenge
+        case .dailyRun: return .dailyRun
+        case .weeklySpecial: return .weeklySpecial
         }
     }
     
-    /// Handle collision between airplane and ground
-    private func handleGroundCollision(airplane: SKNode, ground: SKNode) {
-        // End the game if the airplane hits the ground
-        gameOver(reason: "Crashed")
+    // MARK: - Game State Updates
+    
+    private func updateGameState() {
+        guard GameManager.shared.currentState.status == .playing else { return }
+        
+        // Update score based on game mode
+        // Post score update notification instead of calling GameManager directly
+        let scoreToAdd: Int
+        switch gameMode {
+        case .freePlay:
+            scoreToAdd = calculateFreePlayScore()
+        case .challenge:
+            scoreToAdd = calculateChallengeScore()
+        case .dailyRun:
+            scoreToAdd = calculateDailyRunScore()
+        case .tutorial:
+            return // No scoring in tutorial mode
+        case .weeklySpecial:
+            scoreToAdd = calculateWeeklySpecialScore()
+        }
+        
+        NotificationCenter.default.post(
+            name: NSNotification.Name("ScoreUpdate"),
+            object: self,
+            userInfo: ["scoreToAdd": scoreToAdd]
+        )
     }
-} 
+    
+    private func calculateFreePlayScore() -> Int {
+        // Basic scoring for free play mode
+        return Int(airplane?.position.x ?? 0)
+    }
+    
+    private func calculateChallengeScore() -> Int {
+        // Challenge mode scoring
+        guard let challengeDistance = challengeDistance else { return 0 }
+        let currentDistance = Int(airplane?.position.x ?? 0)
+        return min(currentDistance, challengeDistance)
+    }
+    
+    private func calculateDailyRunScore() -> Int {
+        // Daily run scoring with multipliers
+        let baseScore = Int(airplane?.position.x ?? 0)
+        let multiplier = 1.5 // Example multiplier for daily run
+        return Int(Double(baseScore) * multiplier)
+    }
+    
+    private func calculateWeeklySpecialScore() -> Int {
+        // Weekly special mode scoring
+        let baseScore = Int(airplane?.position.x ?? 0)
+        let multiplier = 2.0 // Example multiplier for weekly special
+        return Int(Double(baseScore) * multiplier)
+    }
+}
+
+// MARK: - GameEnvironment Class references
+// Using GameEnvironment class from Models/Environment.swift instead of defining it here
+
+// MARK: - ParallaxBackground Class references
+// Using ParallaxBackground class from Models/ParallaxBackground.swift instead of defining it here
+
+// MARK: - Extensions
+
+extension SKLabelNode {
+    /// Adds a shadow effect to improve visibility against varying backgrounds
+    func addShadow(radius: CGFloat = 1.0, opacity: CGFloat = 0.3) {
+        let shadowLabel = SKLabelNode(text: self.text)
+        shadowLabel.fontName = self.fontName
+        shadowLabel.fontSize = self.fontSize
+        shadowLabel.fontColor = UIColor.black.withAlphaComponent(opacity)
+        shadowLabel.position = CGPoint(x: radius, y: -radius)
+        shadowLabel.zPosition = -1
+        self.addChild(shadowLabel)
+    }
+}
