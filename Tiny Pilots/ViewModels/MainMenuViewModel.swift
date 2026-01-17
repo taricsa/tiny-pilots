@@ -340,10 +340,10 @@ class MainMenuViewModel: BaseViewModel {
     }
     
     private func authenticateGameCenter() {
-        gameCenterService.authenticate { [weak self] success, error in
-            if let error = error {
+        gameCenterService.authenticate { success, error in
+            if error != nil {
                 // Don't show Game Center authentication errors to user
-                print("Game Center authentication failed: \(error)")
+                print("Game Center authentication failed: \(error!)")
             }
         }
     }

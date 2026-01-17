@@ -15,7 +15,7 @@ protocol PrivacyManagerProtocol {
 }
 
 /// Privacy compliance manager for GDPR and other privacy regulations
-class PrivacyManager: PrivacyManagerProtocol {
+class PrivacyManager: PrivacyManagerProtocol, @unchecked Sendable {
     static let shared = PrivacyManager()
     
     private let secureDataManager = SecureDataManager.shared

@@ -10,7 +10,7 @@ import Network
 import SystemConfiguration
 
 /// Network monitoring system for tracking connectivity and handling offline scenarios
-class NetworkMonitor: ObservableObject {
+class NetworkMonitor: ObservableObject, @unchecked Sendable {
     static let shared = NetworkMonitor()
     
     // MARK: - Properties

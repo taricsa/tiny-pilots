@@ -336,7 +336,6 @@ class HangarScene: SKScene {
     
     /// Add options to a customization panel
     private func addPanelOptions(to panel: SKNode, type: CustomizationPanelType, size: CGSize) {
-        let optionHeight: CGFloat = 30
         let optionSpacing: CGFloat = 35
         let startY = size.height / 2 - 70
         

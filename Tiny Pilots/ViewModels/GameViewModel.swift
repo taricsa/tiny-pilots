@@ -154,8 +154,9 @@ class GameViewModel: BaseViewModel {
                     let weeklySpecial = try await weeklySpecialService.getWeeklySpecial(id: weeklySpecialID)
                     
                     await MainActor.run {
-                        environmentType = weeklySpecial.environment
-                        self.continueGameStart(mode: mode, environmentType: environmentType, challengeCode: challengeCode, weeklySpecialID: weeklySpecialID)
+                        let capturedEnvironment = weeklySpecial.environment
+                        self.environmentType = capturedEnvironment
+                        self.continueGameStart(mode: mode, environmentType: capturedEnvironment, challengeCode: challengeCode, weeklySpecialID: weeklySpecialID)
                     }
                 } catch {
                     await MainActor.run {
@@ -499,8 +500,8 @@ class GameViewModel: BaseViewModel {
         
         let leaderboardID = getLeaderboardID(for: gameState.mode)
         
-        gameCenterService.submitScore(gameState.score, to: leaderboardID) { [weak self] error in
-            if let error = error {
+        gameCenterService.submitScore(gameState.score, to: leaderboardID) { error in
+            if error != nil {
                 // Don't show Game Center errors to user, just log them
                 Logger.shared.warning("Failed to submit score to Game Center", category: .game)
             }

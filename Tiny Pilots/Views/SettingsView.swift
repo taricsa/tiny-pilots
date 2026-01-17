@@ -20,165 +20,18 @@ struct SettingsView: View {
     
     var body: some View {
         ZStack {
-            // Semi-transparent background with accessibility considerations
-            Color.black.opacity(VisualAccessibilityHelper.shared.isReduceTransparencyEnabled ? 0.9 : 0.7)
-                .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
-                    // Close when tapping outside
-                    let animationDuration = VisualAccessibilityHelper.shared.adjustedAnimationDuration(0.3)
-                    withAnimation(.easeInOut(duration: animationDuration)) {
-                        isPresented = false
-                    }
-                }
-            
-            // Settings panel
-            VStack(spacing: 0) {
-                // Header
-                header
-                
-                // Settings content
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Audio settings
-                        settingsSection(title: "Audio") {
-                            sliderSetting(
-                                title: "Sound Effects",
-                                value: $soundVolume,
-                                range: 0...1,
-                                icon: "speaker.wave.2.fill"
-                            )
-                            
-                            sliderSetting(
-                                title: "Music",
-                                value: $musicVolume,
-                                range: 0...1,
-                                icon: "music.note"
-                            )
-                        }
-                        
-                        // Gameplay settings
-                        settingsSection(title: "Gameplay") {
-                            sliderSetting(
-                                title: "Control Sensitivity",
-                                value: $controlSensitivity,
-                                range: 0.5...1.5,
-                                icon: "hand.tap.fill"
-                            )
-                            
-                            toggleSetting(
-                                title: "Show Tutorial Tips",
-                                isOn: $showTutorialTips,
-                                icon: "questionmark.circle.fill"
-                            )
-                            
-                            toggleSetting(
-                                title: "Haptic Feedback",
-                                isOn: $useHapticFeedback,
-                                icon: "iphone.radiowaves.left.and.right"
-                            )
-                        }
-                        
-                        // Performance settings
-                        settingsSection(title: "Performance") {
-                            toggleSetting(
-                                title: "High Performance Mode",
-                                isOn: $highPerformanceMode,
-                                icon: "bolt.fill"
-                            )
-                            .accessibilityHint("Enables higher frame rates on supported devices")
-                        }
-                        
-                        // Accessibility settings
-                        settingsSection(title: "Accessibility") {
-                            VStack(spacing: 16) {
-                                // Current accessibility status
-                                accessibilityStatusView()
-                                
-                                // Accessibility testing button
-                                Button(action: {
-                                    testAccessibilityFeatures()
-                                }) {
-                                    HStack {
-                                        Image(systemName: "checkmark.circle")
-                                            .foregroundColor(.green)
-                                        
-                                        Text("Test Accessibility Features")
-                                            .foregroundColor(.white)
-                                        
-                                        Spacer()
-                                        
-                                        Image(systemName: "arrow.right.circle")
-                                            .foregroundColor(.blue)
-                                    }
-                                    .padding(.horizontal)
-                                }
-                                .accessibilityLabel("Test accessibility features")
-                                .accessibilityHint("Runs a test of all accessibility features")
-                            }
-                        }
-                        
-                        // About section
-                        settingsSection(title: "About") {
-                            HStack {
-                                Text("Version")
-                                    .foregroundColor(.white)
-                                
-                                Spacer()
-                                
-                                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
-                                    .foregroundColor(.gray)
-                            }
-                            .padding(.horizontal)
-                            
-                            Button(action: {
-                                // Open privacy policy
-                                if let url = URL(string: "https://www.example.com/privacy") {
-                                    UIApplication.shared.open(url)
-                                }
-                            }) {
-                                HStack {
-                                    Text("Privacy Policy")
-                                        .foregroundColor(.white)
-                                    
-                                    Spacer()
-                                    
-                                    Image(systemName: "arrow.up.right.square")
-                                        .foregroundColor(.blue)
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                    }
-                    .padding()
-                }
-                
-                // Footer with buttons
-                footer
-            }
-            .frame(width: min(UIScreen.main.bounds.width - 40, 400), height: min(UIScreen.main.bounds.height - 80, 600))
-            .background(
-                RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20))
-                    .fill(VisualAccessibilityHelper.shared.isHighContrastEnabled ? 
-                          Color.black : Color(UIColor.systemGray6))
-                    .overlay(
-                        VisualAccessibilityHelper.shared.isHighContrastEnabled ?
-                        RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20))
-                            .stroke(Color.white, lineWidth: 2) : nil
-                    )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20)))
-            .shadow(color: .black.opacity(VisualAccessibilityHelper.shared.isReduceTransparencyEnabled ? 0.8 : 0.5), 
-                   radius: 20, x: 0, y: 10)
+            backgroundView
+            settingsPanel
         }
         .onChange(of: soundVolume) { oldValue, newValue in
             UserDefaults.standard.set(newValue, forKey: "soundVolume")
-            // Update sound manager
-            SoundManager.shared.setSoundVolume(Float(newValue))
+            // Update audio service
+            updateAudioServiceVolume(sound: Float(newValue), music: nil)
         }
         .onChange(of: musicVolume) { oldValue, newValue in
             UserDefaults.standard.set(newValue, forKey: "musicVolume")
-            // Update sound manager
-            SoundManager.shared.setMusicVolume(Float(newValue))
+            // Update audio service
+            updateAudioServiceVolume(sound: nil, music: Float(newValue))
         }
         .onChange(of: controlSensitivity) { oldValue, newValue in
             UserDefaults.standard.set(newValue, forKey: "controlSensitivity")
@@ -199,6 +52,176 @@ struct SettingsView: View {
     }
     
     // MARK: - UI Components
+    
+    /// Background view with tap gesture
+    private var backgroundView: some View {
+        Color.black.opacity(VisualAccessibilityHelper.shared.isReduceTransparencyEnabled ? 0.9 : 0.7)
+            .edgesIgnoringSafeArea(.all)
+            .onTapGesture {
+                // Close when tapping outside
+                let animationDuration = VisualAccessibilityHelper.shared.adjustedAnimationDuration(0.3)
+                withAnimation(.easeInOut(duration: animationDuration)) {
+                    isPresented = false
+                }
+            }
+    }
+    
+    /// Main settings panel
+    private var settingsPanel: some View {
+        VStack(spacing: 0) {
+            header
+            settingsContent
+            footer
+        }
+        .frame(width: min(UIScreen.main.bounds.width - 40, 400), height: min(UIScreen.main.bounds.height - 80, 600))
+        .background(panelBackground)
+        .clipShape(RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20)))
+        .shadow(color: .black.opacity(VisualAccessibilityHelper.shared.isReduceTransparencyEnabled ? 0.8 : 0.5), 
+               radius: 20, x: 0, y: 10)
+    }
+    
+    /// Panel background styling
+    private var panelBackground: some View {
+        RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20))
+            .fill(VisualAccessibilityHelper.shared.isHighContrastEnabled ? 
+                  Color.black : Color(UIColor.systemGray6))
+            .overlay(
+                VisualAccessibilityHelper.shared.isHighContrastEnabled ?
+                RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20))
+                    .stroke(Color.white, lineWidth: 2) : nil
+            )
+    }
+    
+    /// Scrollable settings content
+    private var settingsContent: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                audioSettingsSection
+                gameplaySettingsSection
+                performanceSettingsSection
+                accessibilitySettingsSection
+                aboutSettingsSection
+            }
+            .padding()
+        }
+    }
+    
+    /// Audio settings section
+    private var audioSettingsSection: some View {
+        settingsSection(title: "Audio") {
+            sliderSetting(
+                title: "Sound Effects",
+                value: $soundVolume,
+                range: 0...1,
+                icon: "speaker.wave.2.fill"
+            )
+            
+            sliderSetting(
+                title: "Music",
+                value: $musicVolume,
+                range: 0...1,
+                icon: "music.note"
+            )
+        }
+    }
+    
+    /// Gameplay settings section
+    private var gameplaySettingsSection: some View {
+        settingsSection(title: "Gameplay") {
+            sliderSetting(
+                title: "Control Sensitivity",
+                value: $controlSensitivity,
+                range: 0.5...1.5,
+                icon: "hand.tap.fill"
+            )
+            
+            toggleSetting(
+                title: "Show Tutorial Tips",
+                isOn: $showTutorialTips,
+                icon: "questionmark.circle.fill"
+            )
+            
+            toggleSetting(
+                title: "Haptic Feedback",
+                isOn: $useHapticFeedback,
+                icon: "iphone.radiowaves.left.and.right"
+            )
+        }
+    }
+    
+    /// Performance settings section
+    private var performanceSettingsSection: some View {
+        settingsSection(title: "Performance") {
+            toggleSetting(
+                title: "High Performance Mode",
+                isOn: $highPerformanceMode,
+                icon: "bolt.fill"
+            )
+            .accessibilityHint("Enables higher frame rates on supported devices")
+        }
+    }
+    
+    /// Accessibility settings section
+    private var accessibilitySettingsSection: some View {
+        settingsSection(title: "Accessibility") {
+            VStack(spacing: 16) {
+                accessibilityStatusView()
+                
+                Button(action: {
+                    testAccessibilityFeatures()
+                }) {
+                    HStack {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundColor(.green)
+                        
+                        Text("Test Accessibility Features")
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "arrow.right.circle")
+                            .foregroundColor(.blue)
+                    }
+                    .padding(.horizontal)
+                }
+                .accessibilityLabel("Test accessibility features")
+                .accessibilityHint("Runs a test of all accessibility features")
+            }
+        }
+    }
+    
+    /// About settings section
+    private var aboutSettingsSection: some View {
+        settingsSection(title: "About") {
+            HStack {
+                Text("Version")
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal)
+            
+            Button(action: {
+                if let url = URL(string: "https://www.example.com/privacy") {
+                    UIApplication.shared.open(url)
+                }
+            }) {
+                HStack {
+                    Text("Privacy Policy")
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "arrow.up.right.square")
+                        .foregroundColor(.blue)
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
     
     /// Header with title and close button
     private var header: some View {
@@ -372,10 +395,21 @@ struct SettingsView: View {
         UserDefaults.standard.set(highPerformanceMode, forKey: "highPerformanceMode")
         
         // Update managers
-        SoundManager.shared.setSoundVolume(Float(soundVolume))
-        SoundManager.shared.setMusicVolume(Float(musicVolume))
+        updateAudioServiceVolume(sound: Float(soundVolume), music: Float(musicVolume))
         PhysicsManager.shared.setSensitivity(CGFloat(controlSensitivity))
         updatePerformanceSettings()
+    }
+    
+    /// Update audio service volume settings
+    private func updateAudioServiceVolume(sound: Float?, music: Float?) {
+        if let audioService = try? DIContainer.shared.resolve(AudioServiceProtocol.self) {
+            if let sound = sound {
+                audioService.soundVolume = sound
+            }
+            if let music = music {
+                audioService.musicVolume = music
+            }
+        }
     }
     
     /// Update performance settings based on high performance mode

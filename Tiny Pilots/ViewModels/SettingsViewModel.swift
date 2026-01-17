@@ -8,6 +8,7 @@
 import Foundation
 import Observation
 import SwiftData
+import UIKit
 
 /// ViewModel for managing game settings
 @Observable
@@ -303,75 +304,69 @@ class SettingsViewModel: BaseViewModel {
     func importSettings(_ settings: [String: Any]) -> Bool {
         isInitializing = true
         
-        do {
-            // Audio settings
-            if let value = settings["soundVolume"] as? Double {
-                soundVolume = max(0.0, min(1.0, value))
-            }
-            if let value = settings["musicVolume"] as? Double {
-                musicVolume = max(0.0, min(1.0, value))
-            }
-            if let value = settings["soundEnabled"] as? Bool {
-                soundEnabled = value
-            }
-            if let value = settings["musicEnabled"] as? Bool {
-                musicEnabled = value
-            }
-            
-            // Gameplay settings
-            if let value = settings["controlSensitivity"] as? Double {
-                controlSensitivity = max(0.5, min(1.5, value))
-            }
-            if let value = settings["showTutorialTips"] as? Bool {
-                showTutorialTips = value
-            }
-            if let value = settings["useHapticFeedback"] as? Bool {
-                useHapticFeedback = value
-            }
-            if let value = settings["invertControls"] as? Bool {
-                invertControls = value
-            }
-            
-            // Graphics settings
-            if let value = settings["highPerformanceMode"] as? Bool {
-                highPerformanceMode = value
-            }
-            if let value = settings["particleEffectsEnabled"] as? Bool {
-                particleEffectsEnabled = value
-            }
-            if let value = settings["graphicsQuality"] as? String,
-               let quality = GraphicsQuality(rawValue: value) {
-                graphicsQuality = quality
-            }
-            
-            // Privacy settings
-            if let value = settings["analyticsEnabled"] as? Bool {
-                analyticsEnabled = value
-            }
-            if let value = settings["crashReportingEnabled"] as? Bool {
-                crashReportingEnabled = value
-            }
-            
-            // Game Center settings
-            if let value = settings["gameCenterEnabled"] as? Bool {
-                gameCenterEnabled = value
-            }
-            if let value = settings["gameCenterNotifications"] as? Bool {
-                gameCenterNotifications = value
-            }
-            
-            isInitializing = false
-            
-            // Apply and save settings
-            applySettings()
-            saveSettings()
-            
-            return true
-        } catch {
-            isInitializing = false
-            setError(error)
-            return false
+        // Audio settings
+        if let value = settings["soundVolume"] as? Double {
+            soundVolume = max(0.0, min(1.0, value))
         }
+        if let value = settings["musicVolume"] as? Double {
+            musicVolume = max(0.0, min(1.0, value))
+        }
+        if let value = settings["soundEnabled"] as? Bool {
+            soundEnabled = value
+        }
+        if let value = settings["musicEnabled"] as? Bool {
+            musicEnabled = value
+        }
+        
+        // Gameplay settings
+        if let value = settings["controlSensitivity"] as? Double {
+            controlSensitivity = max(0.5, min(1.5, value))
+        }
+        if let value = settings["showTutorialTips"] as? Bool {
+            showTutorialTips = value
+        }
+        if let value = settings["useHapticFeedback"] as? Bool {
+            useHapticFeedback = value
+        }
+        if let value = settings["invertControls"] as? Bool {
+            invertControls = value
+        }
+        
+        // Graphics settings
+        if let value = settings["highPerformanceMode"] as? Bool {
+            highPerformanceMode = value
+        }
+        if let value = settings["particleEffectsEnabled"] as? Bool {
+            particleEffectsEnabled = value
+        }
+        if let value = settings["graphicsQuality"] as? String,
+           let quality = GraphicsQuality(rawValue: value) {
+            graphicsQuality = quality
+        }
+        
+        // Privacy settings
+        if let value = settings["analyticsEnabled"] as? Bool {
+            analyticsEnabled = value
+        }
+        if let value = settings["crashReportingEnabled"] as? Bool {
+            crashReportingEnabled = value
+        }
+        
+        // Game Center settings
+        if let value = settings["gameCenterEnabled"] as? Bool {
+            gameCenterEnabled = value
+        }
+        if let value = settings["gameCenterNotifications"] as? Bool {
+            gameCenterNotifications = value
+        }
+        
+        isInitializing = false
+        
+        // Apply and save settings
+        applySettings()
+        saveSettings()
+        
+        return true
     }
     
     // MARK: - Game Center Methods
