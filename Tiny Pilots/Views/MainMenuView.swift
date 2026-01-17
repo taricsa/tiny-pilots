@@ -140,12 +140,12 @@ struct MainMenuView: View {
                 RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(24))
                     .stroke(
                         VisualAccessibilityHelper.shared.isHighContrastEnabled ?
-                        Color.white :
-                        LinearGradient(
+                        AnyShapeStyle(Color.white) :
+                        AnyShapeStyle(LinearGradient(
                             colors: [.white.opacity(0.7), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
-                        ),
+                        )),
                         lineWidth: VisualAccessibilityHelper.shared.isHighContrastEnabled ? 2.0 : 1.5
                     )
             }
@@ -491,12 +491,12 @@ struct MenuButton: View {
                     RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(16))
                         .stroke(
                             VisualAccessibilityHelper.shared.isHighContrastEnabled || VisualAccessibilityHelper.shared.isButtonShapesEnabled ?
-                            Color.white :
-                            LinearGradient(
+                            AnyShapeStyle(Color.white) :
+                            AnyShapeStyle(LinearGradient(
                                 colors: [.white.opacity(0.5), .clear],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
-                            ),
+                            )),
                             lineWidth: VisualAccessibilityHelper.shared.isHighContrastEnabled ? 2.0 : 1.0
                         )
                 }

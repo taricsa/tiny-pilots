@@ -156,7 +156,7 @@ class GameViewController: UIViewController {
             if view.scene is FlightScene {
                 // Start the game
                 // Convert GameManager.GameMode to GameState.Mode
-                let gameStateMode = convertToGameStateMode(mode)
+                let gameStateMode = self.convertToGameStateMode(mode)
                 GameManager.shared.setGameMode(gameStateMode)
                 GameManager.shared.startGame()
             } else {
@@ -279,41 +279,41 @@ class GameViewController: UIViewController {
         
         // If Combine publisher is available in GameStateManager, also attach here
         // screenChangeSubscription = GameStateManager.shared.$currentScreen
-            .sink { [weak self] screen in
-                guard let self = self, let view = self.view as? SKView else { return }
-                
-                print("Screen changed to: \(screen)")
-                
-                // First, clean up the current state
-                self.cleanupCurrentScene()
-                
-                // Handle different screen types
-                switch screen {
-                case .mainMenu:
-                    self.presentMainMenu(in: view)
-                case .gameModeSelection:
-                    self.presentGameModeSelection(in: view)
-                case .flight:
-                    let gmMode = convertFromGameStateMode(GameStateManager.shared.currentGameMode)
-                    self.presentFlightScene(in: view, mode: gmMode)
-                case .hangar:
-                    self.presentHangarScene(in: view)
-                case .challenge(let code):
-                    self.presentChallengeScene(in: view, challengeCode: code)
-                case .dailyRun:
-                    self.presentFlightScene(in: view, mode: .dailyRun)
-                case .weeklySpecial:
-                    self.presentFlightScene(in: view, mode: .weeklySpecial)
-                default:
-                    break
-                }
-            }
+        //     .sink { [weak self] screen in
+        //         guard let self = self, let view = self.view as? SKView else { return }
+        //         
+        //         print("Screen changed to: \(screen)")
+        //         
+        //         // First, clean up the current state
+        //         self.cleanupCurrentScene()
+        //         
+        //         // Handle different screen types
+        //         switch screen {
+        //         case .mainMenu:
+        //             self.presentMainMenu(in: view)
+        //         case .gameModeSelection:
+        //             self.presentGameModeSelection(in: view)
+        //         case .flight:
+        //             let gmMode = self.convertFromGameStateMode(GameStateManager.shared.currentState.mode)
+        //             self.presentFlightScene(in: view, mode: gmMode)
+        //         case .hangar:
+        //             self.presentHangarScene(in: view)
+        //         case .challenge(let code):
+        //             self.presentChallengeScene(in: view, challengeCode: code)
+        //         case .dailyRun:
+        //             self.presentFlightScene(in: view, mode: .dailyRun)
+        //         case .weeklySpecial:
+        //             self.presentFlightScene(in: view, mode: .weeklySpecial)
+        //         default:
+        //             break
+        //         }
+        //     }
     }
     
     /// Clean up the current scene before transitioning to a new one
     private func cleanupCurrentScene() {
         // Stop any ongoing game
-        if GameManager.shared.currentState == .playing || GameManager.shared.currentState == .paused {
+        if GameManager.shared.currentState.status == .playing || GameManager.shared.currentState.status == .paused {
             print("Stopping current game before scene transition")
             GameManager.shared.stopGame()
         }
