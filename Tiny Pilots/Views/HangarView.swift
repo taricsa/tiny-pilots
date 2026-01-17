@@ -2,8 +2,11 @@ import SwiftUI
 
 /// SwiftUI view for the airplane hangar
 struct HangarView: View {
-    // Environment object to access game state
-    @EnvironmentObject var gameState: GameStateManager
+    // Environment dismiss action for navigation
+    @Environment(\.dismiss) private var dismiss
+    
+    // Optional callback for when user wants to return to main menu
+    var onBack: (() -> Void)?
     
     // Animation states
     @State private var animateTitle = true
@@ -49,11 +52,16 @@ struct HangarView: View {
             .opacity(animateTitle ? 1 : 0)
             .offset(y: animateTitle ? 0 : -50)
             .minimumScaleFactor(0.5)
-            .lineLimit(nil)
+            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
     }
     
     private var airplaneDisplayView: some View {
-        VStack(spacing: 20) {
+        let backgroundCorner = DynamicTypeHelper.shared.scaledCornerRadius(20)
+        let baseFill = Color.white.opacity(VisualAccessibilityHelper.shared.isReduceTransparencyEnabled ? 0.3 : 0.1)
+        let strokeView: AnyView = VisualAccessibilityHelper.shared.isHighContrastEnabled ? AnyView(RoundedRectangle(cornerRadius: backgroundCorner).stroke(Color.white, lineWidth: 2)) : AnyView(EmptyView())
+        
+        return VStack(spacing: 20) {
             // Airplane image placeholder
             ZStack {
                 Circle()
@@ -77,13 +85,15 @@ struct HangarView: View {
             VStack(spacing: DynamicTypeHelper.shared.scaledSpacing(8)) {
                 Text(airplanes[selectedPlane].name)
                     .font(DynamicTypeHelper.shared.scaledFont(baseSize: 24, weight: .bold, design: .rounded, for: .title2))
-                    .lineLimit(nil)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 Text(airplanes[selectedPlane].description)
                     .font(DynamicTypeHelper.shared.scaledFont(baseSize: 16, for: .body))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, DynamicTypeHelper.shared.scaledPadding(20))
-                    .lineLimit(nil)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 // Locked status
                 if !airplanes[selectedPlane].unlocked {
@@ -91,7 +101,8 @@ struct HangarView: View {
                         .font(DynamicTypeHelper.shared.scaledFont(baseSize: 16, weight: .medium, for: .body))
                         .foregroundColor(.orange)
                         .padding(.top, DynamicTypeHelper.shared.scaledPadding(8))
-                        .lineLimit(nil)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .foregroundColor(.white)
@@ -102,19 +113,18 @@ struct HangarView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, DynamicTypeHelper.shared.scaledPadding(24))
         .background(
-            RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20))
-                .fill(Color.white.opacity(VisualAccessibilityHelper.shared.isReduceTransparencyEnabled ? 0.3 : 0.1))
-                .background(
-                    VisualAccessibilityHelper.shared.isReduceTransparencyEnabled ?
-                    Color.blue.opacity(0.8) :
-                    .ultraThinMaterial,
-                    in: RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20))
-                )
-                .overlay(
-                    VisualAccessibilityHelper.shared.isHighContrastEnabled ?
-                    RoundedRectangle(cornerRadius: DynamicTypeHelper.shared.scaledCornerRadius(20))
-                        .stroke(Color.white, lineWidth: 2) : nil
-                )
+            ZStack {
+                RoundedRectangle(cornerRadius: backgroundCorner)
+                    .fill(baseFill)
+                if VisualAccessibilityHelper.shared.isReduceTransparencyEnabled {
+                    RoundedRectangle(cornerRadius: backgroundCorner)
+                        .fill(Color.blue.opacity(0.8))
+                } else {
+                    RoundedRectangle(cornerRadius: backgroundCorner)
+                        .fill(.ultraThinMaterial)
+                }
+                strokeView
+            }
         )
         .padding(.horizontal, DynamicTypeHelper.shared.scaledPadding(24))
         .opacity(animateContent ? 1 : 0)
@@ -123,13 +133,13 @@ struct HangarView: View {
     
     private var airplaneSelectionButtons: some View {
         HStack(spacing: 16) {
-            ForEach(0..<airplanes.count, id: \.self) { index in
+            ForEach(Array(airplanes.indices), id: \.self) { index in
                 Button {
                     selectedPlane = index
                 } label: {
                     Circle()
-                        .fill(selectedPlane == index 
-                              ? Color.white 
+                        .fill(selectedPlane == index
+                              ? Color.white
                               : Color.white.opacity(0.3))
                         .frame(width: 16, height: 16)
                 }
@@ -149,7 +159,7 @@ struct HangarView: View {
             // Back button
             Button {
                 withAnimation {
-                    gameState.currentScreen = .mainMenu
+                    onBack?() ?? dismiss()
                 }
             } label: {
                 HStack {
@@ -162,12 +172,10 @@ struct HangarView: View {
                 .padding(.vertical, DynamicTypeHelper.shared.scaledPadding(12))
                 .padding(.horizontal, DynamicTypeHelper.shared.scaledPadding(24))
                 .background(
-                    Capsule()
-                        .fill(Color.white.opacity(0.2))
-                        .background(
-                            .ultraThinMaterial,
-                            in: Capsule()
-                        )
+                    Capsule().fill(Color.white.opacity(0.2))
+                )
+                .overlay(
+                    Capsule().fill(.ultraThinMaterial)
                 )
                 .foregroundColor(.white)
             }
@@ -179,7 +187,7 @@ struct HangarView: View {
             Button {
                 // In a real implementation, this would save the selected plane
                 withAnimation {
-                    gameState.currentScreen = .mainMenu
+                    onBack?() ?? dismiss()
                 }
             } label: {
                 Text("Select")
@@ -187,14 +195,12 @@ struct HangarView: View {
                     .padding(.vertical, DynamicTypeHelper.shared.scaledPadding(12))
                     .padding(.horizontal, DynamicTypeHelper.shared.scaledPadding(36))
                     .background(
-                        Capsule()
-                            .fill(airplanes[selectedPlane].unlocked 
-                                  ? Color.blue 
-                                  : Color.gray)
-                            .background(
-                                .ultraThinMaterial,
-                                in: Capsule()
-                            )
+                        Capsule().fill(airplanes[selectedPlane].unlocked
+                                       ? Color.blue
+                                       : Color.gray)
+                    )
+                    .overlay(
+                        Capsule().fill(.ultraThinMaterial)
                     )
                     .foregroundColor(.white)
             }
