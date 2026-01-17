@@ -29,6 +29,11 @@ protocol PhysicsServiceProtocol {
     /// Stop custom physics simulation
     func stopPhysicsSimulation()
     
+    /// Explicitly set the current airplane for physics updates.
+    /// Call during scene setup to ensure the airplane is registered before the frame loop.
+    /// - Parameter airplane: The paper airplane to apply physics to, or nil to clear
+    func setCurrentAirplane(_ airplane: PaperAirplane?)
+    
     /// Update physics simulation with frame-synced delta time
     /// - Parameter deltaTime: Time elapsed since last frame
     func update(deltaTime: TimeInterval)

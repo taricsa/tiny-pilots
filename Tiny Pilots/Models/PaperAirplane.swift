@@ -321,8 +321,18 @@ class PaperAirplane: SKSpriteNode {
     
     /// Apply the current design to the airplane's visual appearance
     private func applyDesign() {
-        // In a real implementation, this would apply the design texture
-        // For now, we'll just set a color based on the design
+        // Attempt to load the design texture using safe loading
+        // If texture exists, it would be applied here
+        if let designTexture = SKTexture.safeTexture(imageNamed: design.textureName) {
+            // Design texture found - apply it
+            self.texture = designTexture
+            self.colorBlendFactor = 0.0
+            return
+        }
+        
+        // Fallback: apply color tint based on the design
+        // This ensures visual distinction even without texture assets
+        colorBlendFactor = 0.3
         switch design {
         case .plain:
             color = .white

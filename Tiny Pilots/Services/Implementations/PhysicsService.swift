@@ -23,7 +23,10 @@ class PhysicsService: PhysicsServiceProtocol {
     /// Flag indicating if physics simulation is active
     private(set) var isActive = false
     
-    /// Weak reference to the current airplane for physics updates
+    /// Weak reference to the current airplane for physics updates.
+    /// NOTE: This property is set implicitly via `applyForces(to:...)` and used by `update(deltaTime:)`.
+    /// The scene must call `applyForces` (via motion updates) before `update` to ensure this is set.
+    /// Consider calling `setCurrentAirplane(_:)` explicitly at scene setup for clearer initialization.
     private weak var currentAirplane: PaperAirplane?
     
     // MARK: - Initialization
@@ -116,6 +119,14 @@ class PhysicsService: PhysicsServiceProtocol {
         
         // Clear airplane reference
         currentAirplane = nil
+    }
+    
+    /// Explicitly set the current airplane for physics updates.
+    /// Call this during scene setup to ensure the airplane is registered before
+    /// the frame loop calls `update(deltaTime:)`.
+    /// - Parameter airplane: The paper airplane to apply physics to
+    func setCurrentAirplane(_ airplane: PaperAirplane?) {
+        currentAirplane = airplane
     }
     
     /// Update physics simulation with frame-synced delta time

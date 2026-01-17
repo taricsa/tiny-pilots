@@ -951,30 +951,35 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         // Check if UI container or its children were tapped
         if let uiContainer = cameraNode?.childNode(withName: "uiContainer") {
             
-            // Check if pause button was tapped
-            if let pauseButton = pauseButton, pauseButton.contains(convert(location, to: pauseButton.parent!)) {
+            // Check if pause button was tapped (use optional binding for parent)
+            if let pauseButton = pauseButton,
+               let parent = pauseButton.parent,
+               pauseButton.contains(convert(location, to: parent)) {
                 print("Pause button tapped")
                 pauseGame()
                 return
             }
             
-            // Check for game controls
+            // Check for game controls (use optional binding for parent to avoid crashes)
             if let restartButton = uiContainer.childNode(withName: "restartButton"),
-               restartButton.contains(convert(location, to: restartButton.parent!)) {
+               let parent = restartButton.parent,
+               restartButton.contains(convert(location, to: parent)) {
                 print("Restart button tapped")
                 restartScene()
                 return
             }
             
             if let homeButton = uiContainer.childNode(withName: "homeButton"),
-               homeButton.contains(convert(location, to: homeButton.parent!)) {
+               let parent = homeButton.parent,
+               homeButton.contains(convert(location, to: parent)) {
                 print("Home button tapped")
                 returnToMainMenu()
                 return
             }
             
             if let shareButton = uiContainer.childNode(withName: "shareButton"),
-               shareButton.contains(convert(location, to: shareButton.parent!)) {
+               let parent = shareButton.parent,
+               shareButton.contains(convert(location, to: parent)) {
                 print("Share button tapped")
                 shareScore()
                 return
