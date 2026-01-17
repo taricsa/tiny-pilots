@@ -891,9 +891,8 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         let cullThreshold = cameraX - cullingDistance
         
         // Cull nodes by category bit mask
-        enumerateChildNodes(withName: "//*") { [weak self] node, _ in
-            guard let self = self,
-                  let physicsBody = node.physicsBody else { return }
+        enumerateChildNodes(withName: "//*") { node, _ in
+            guard let physicsBody = node.physicsBody else { return }
             
             // Check if node is an obstacle or collectible
             let isObstacle = (physicsBody.categoryBitMask & PhysicsCategory.obstacle) != 0
@@ -1097,7 +1096,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         ]))
         
         // Play sound effect
-        audioService?.playSound("collision")
+        audioService?.playSound("collision", volume: nil, pitch: 1.0, completion: nil)
     }
     
     private func handleCollectibleCollision(_ contact: SKPhysicsContact) {
@@ -1116,7 +1115,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         notificationGenerator.prepare() // Prepare for next notification
         
         // Visual feedback
-        audioService?.playSound("coin")
+        audioService?.playSound("coin", volume: nil, pitch: 1.0, completion: nil)
     }
     
     private func handleGroundCollision() {
