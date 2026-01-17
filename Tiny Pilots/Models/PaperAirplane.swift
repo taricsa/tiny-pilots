@@ -8,335 +8,345 @@
 import SpriteKit
 import GameplayKit
 
-/// A class representing a paper airplane with physical properties and visual appearance
-class PaperAirplane {
+/// Represents a paper airplane that the player controls
+/// This class now focuses only on airplane configuration and visual representation
+/// Physics behavior is handled by PhysicsService
+class PaperAirplane: SKSpriteNode {
     
-    // MARK: - Enums
+    /// Types of paper airplanes
+    enum AirplaneType: String, CaseIterable, Codable {
+        case basic = "basic"
+        case speedy = "speedy"
+        case sturdy = "sturdy"
+        case glider = "glider"
+        
+        /// Get the texture name for this airplane type
+        var textureName: String {
+            return "airplane_\(self.rawValue)"
+        }
+        
+        /// Get the size for this airplane type
+        var size: CGSize {
+            switch self {
+            case .basic:
+                return CGSize(width: 60, height: 40)
+            case .speedy:
+                return CGSize(width: 70, height: 35)
+            case .sturdy:
+                return CGSize(width: 65, height: 45)
+            case .glider:
+                return CGSize(width: 75, height: 40)
+            }
+        }
+        
+        /// Get the mass for this airplane type
+        var mass: CGFloat {
+            switch self {
+            case .basic:
+                return 1.0
+            case .speedy:
+                return 0.8
+            case .sturdy:
+                return 1.5
+            case .glider:
+                return 0.7
+            }
+        }
+        
+        /// Get the linear damping for this airplane type
+        var linearDamping: CGFloat {
+            switch self {
+            case .basic:
+                return 0.5
+            case .speedy:
+                return 0.3
+            case .sturdy:
+                return 0.7
+            case .glider:
+                return 0.2
+            }
+        }
+        
+        /// Get the angular damping for this airplane type
+        var angularDamping: CGFloat {
+            switch self {
+            case .basic:
+                return 0.7
+            case .speedy:
+                return 0.5
+            case .sturdy:
+                return 0.9
+            case .glider:
+                return 0.4
+            }
+        }
+    }
     
-    /// Different fold types that affect flight characteristics
-    enum FoldType: String, CaseIterable {
+    /// Types of paper airplane folds
+    enum FoldType: String, CaseIterable, Codable {
         case basic = "Basic"
         case dart = "Dart"
         case glider = "Glider"
         case stunt = "Stunt"
-        case fastFlyer = "Fast Flyer"
+        case fighter = "Fighter"
         
-        /// Returns physics properties associated with this fold type
-        var physicsProperties: PhysicsProperties {
-            switch self {
-            case .basic:
-                return PhysicsProperties(
-                    mass: 0.2,
-                    drag: 0.15,
-                    lift: 0.1,
-                    angularDamping: 0.8,
-                    linearDamping: 0.1
-                )
-            case .dart:
-                return PhysicsProperties(
-                    mass: 0.15,
-                    drag: 0.1,
-                    lift: 0.05,
-                    angularDamping: 0.7,
-                    linearDamping: 0.08
-                )
-            case .glider:
-                return PhysicsProperties(
-                    mass: 0.25,
-                    drag: 0.2,
-                    lift: 0.3,
-                    angularDamping: 0.9,
-                    linearDamping: 0.15
-                )
-            case .stunt:
-                return PhysicsProperties(
-                    mass: 0.18,
-                    drag: 0.08,
-                    lift: 0.15,
-                    angularDamping: 0.5,
-                    linearDamping: 0.12
-                )
-            case .fastFlyer:
-                return PhysicsProperties(
-                    mass: 0.12,
-                    drag: 0.05,
-                    lift: 0.08,
-                    angularDamping: 0.6,
-                    linearDamping: 0.06
-                )
-            }
-        }
-        
-        /// Returns the unlockable level for this fold type
+        /// Level required to unlock this fold type
         var unlockLevel: Int {
             switch self {
             case .basic: return 1
             case .dart: return 3
-            case .glider: return 7
-            case .stunt: return 12
-            case .fastFlyer: return 18
+            case .glider: return 5
+            case .stunt: return 8
+            case .fighter: return 12
+            }
+        }
+        
+        /// Get the physics properties for this fold type
+        var physicsMultiplier: (lift: CGFloat, drag: CGFloat, turnRate: CGFloat, mass: CGFloat) {
+            switch self {
+            case .basic: return (lift: 1.0, drag: 1.0, turnRate: 1.0, mass: 1.0)
+            case .dart: return (lift: 0.8, drag: 0.7, turnRate: 1.2, mass: 0.9)
+            case .glider: return (lift: 1.3, drag: 1.1, turnRate: 0.8, mass: 0.8)
+            case .stunt: return (lift: 1.1, drag: 0.9, turnRate: 1.5, mass: 1.1)
+            case .fighter: return (lift: 1.2, drag: 0.8, turnRate: 1.3, mass: 1.2)
             }
         }
     }
     
-    /// Different design types that affect visual appearance
-    enum DesignType: String, CaseIterable {
+    /// Types of paper airplane designs
+    enum DesignType: String, CaseIterable, Codable {
         case plain = "Plain"
-        case dotted = "Dotted"
         case striped = "Striped"
-        case checkered = "Checkered"
-        case floral = "Floral"
-        case geometric = "Geometric"
-        case galaxy = "Galaxy"
-        case ocean = "Ocean"
-        case forest = "Forest"
-        case fire = "Fire"
+        case dotted = "Dotted"
+        case camouflage = "Camo"
+        case flames = "Flames"
         case rainbow = "Rainbow"
-        case metallic = "Metallic"
-        case neon = "Neon"
-        case vintage = "Vintage"
-        case futuristic = "Futuristic"
         
-        /// Returns the texture name for this design
-        var textureName: String {
-            return "airplane_\(self.rawValue.lowercased())"
-        }
-        
-        /// Returns the unlockable level for this design
+        /// Level required to unlock this design
         var unlockLevel: Int {
-            // Designs are unlocked according to the levels specified in GameConfig
-            let index = DesignType.allCases.firstIndex(of: self) ?? 0
-            return GameConfig.AirplaneDesigns.designUnlockLevels[min(index, GameConfig.AirplaneDesigns.designUnlockLevels.count - 1)]
+            switch self {
+            case .plain: return 1
+            case .striped: return 2
+            case .dotted: return 4
+            case .camouflage: return 7
+            case .flames: return 10
+            case .rainbow: return 15
+            }
         }
-    }
-    
-    // MARK: - Structs
-    
-    /// Physics properties for the airplane
-    struct PhysicsProperties {
-        let mass: CGFloat
-        let drag: CGFloat
-        let lift: CGFloat
-        let angularDamping: CGFloat
-        let linearDamping: CGFloat
+        
+        /// Get the texture name for this design
+        var textureName: String {
+            return "airplane_design_\(self.rawValue.lowercased())"
+        }
     }
     
     // MARK: - Properties
     
-    /// The airplane's sprite node
-    var node: SKSpriteNode
+    /// The type of this airplane (immutable after creation)
+    let type: AirplaneType
     
-    /// The airplane's fold type
-    var foldType: FoldType
+    /// The fold type of this airplane
+    private(set) var fold: FoldType = .basic
     
-    /// The airplane's design type
-    var designType: DesignType
+    /// The design type of this airplane
+    private(set) var design: DesignType = .plain
     
-    /// The current speed of the airplane
-    var speed: CGFloat = 0
+    /// Whether the airplane is currently flying (visual state only)
+    private(set) var isFlying = false
     
-    /// The maximum speed this airplane can achieve
-    var maxSpeed: CGFloat {
-        return GameConfig.Physics.maxSpeed * (1.0 - foldType.physicsProperties.drag * 2)
-    }
-    
-    /// The minimum speed this airplane needs to stay airborne
-    var minSpeed: CGFloat {
-        return GameConfig.Physics.minSpeed
-    }
+    /// Current tilt angle for visual representation (updated by PhysicsService)
+    private(set) var tiltAngle: CGFloat = 0.0
     
     // MARK: - Initialization
     
-    /// Initialize a paper airplane with the specified fold and design types
-    init(foldType: FoldType, designType: DesignType) {
-        self.foldType = foldType
-        self.designType = designType
+    /// Initialize with a specific airplane type
+    init(type: AirplaneType, fold: FoldType = .basic, design: DesignType = .plain) {
+        self.type = type
+        self.fold = fold
+        self.design = design
         
-        // Create sprite node
-        self.node = SKSpriteNode(imageNamed: designType.textureName)
-        
-        // Set default properties
-        self.node.name = "paperAirplane"
-        self.node.zPosition = 10
-        
-        // Set up physics body
-        setupPhysicsBody()
-    }
-    
-    /// Convenience initializer for a basic airplane
-    convenience init() {
-        self.init(foldType: .basic, designType: .plain)
-    }
-    
-    // MARK: - Setup
-    
-    /// Set up the physics body for the airplane
-    private func setupPhysicsBody() {
-        let physicsProperties = foldType.physicsProperties
-        
-        // Create physics body from texture
-        let body = SKPhysicsBody(texture: node.texture!, size: node.size)
-        node.physicsBody = body
-        
-        // Set physics properties
-        body.mass = physicsProperties.mass
-        body.linearDamping = physicsProperties.linearDamping
-        body.angularDamping = physicsProperties.angularDamping
-        body.allowsRotation = true
-        body.affectedByGravity = true
-        
-        // Set collision properties
-        body.categoryBitMask = 1
-        body.collisionBitMask = 2 // Collide with obstacles
-        body.contactTestBitMask = 2 | 4 // Test contact with obstacles and collectibles
-    }
-    
-    // MARK: - Flight Control
-    
-    /// Apply force to the airplane in the direction it's facing
-    func applyThrust(amount: CGFloat) {
-        let direction = CGVector(dx: cos(node.zRotation), dy: sin(node.zRotation))
-        let thrust = CGVector(dx: direction.dx * amount, dy: direction.dy * amount)
-        
-        node.physicsBody?.applyForce(thrust)
-        
-        // Limit speed
-        limitSpeed()
-    }
-    
-    /// Apply lift based on current speed and lift coefficient
-    func applyLift() {
-        let liftCoefficient = foldType.physicsProperties.lift
-        let currentVelocity = node.physicsBody!.velocity
-        let speedFactor = min(1.0, sqrt(pow(currentVelocity.dx, 2) + pow(currentVelocity.dy, 2)) / 200.0)
-        
-        // Lift is perpendicular to direction of travel
-        let liftDirection = CGVector(dx: -currentVelocity.dy, dy: currentVelocity.dx).normalized()
-        let liftForce = CGVector(dx: liftDirection.dx * liftCoefficient * speedFactor * 10,
-                                dy: liftDirection.dy * liftCoefficient * speedFactor * 10)
-        
-        node.physicsBody?.applyForce(liftForce)
-        
-        // Apply additional aerodynamic effects
-        applyAerodynamicEffects(velocity: currentVelocity, speedFactor: speedFactor)
-    }
-    
-    /// Apply additional aerodynamic effects for more realistic flight
-    private func applyAerodynamicEffects(velocity: CGVector, speedFactor: CGFloat) {
-        guard let physicsBody = node.physicsBody else { return }
-        
-        // Calculate angle of attack (difference between airplane orientation and velocity direction)
-        let velocityAngle = atan2(velocity.dy, velocity.dx)
-        let airplaneAngle = node.zRotation
-        var angleOfAttack = airplaneAngle - velocityAngle
-        
-        // Normalize to [-π, π]
-        while angleOfAttack > .pi { angleOfAttack -= 2 * .pi }
-        while angleOfAttack < -.pi { angleOfAttack += 2 * .pi }
-        
-        // Calculate stall factor - high angles of attack cause stalling
-        let stallAngle: CGFloat = .pi / 6 // 30 degrees
-        let stallFactor: CGFloat
-        
-        if abs(angleOfAttack) < stallAngle {
-            // Normal flight - full lift
-            stallFactor = 1.0
+        // Use the paperplane image with fallback
+        if let texture = SKTexture(imageNamed: "paperplane") as SKTexture? {
+            super.init(texture: texture, color: .white, size: type.size)
         } else {
-            // Stalling - reduced lift based on how far beyond stall angle
-            let excessAngle = abs(angleOfAttack) - stallAngle
-            stallFactor = max(0.0, 1.0 - (excessAngle / (stallAngle * 0.5)))
+            // Fallback to white rectangle if image not found
+            super.init(texture: nil, color: .white, size: type.size)
         }
         
-        // Apply stall effects
-        if stallFactor < 1.0 {
-            // Reduced lift during stall
-            let stallForce = CGVector(dx: 0, dy: -5.0 * (1.0 - stallFactor) * speedFactor)
-            physicsBody.applyForce(stallForce)
-            
-            // Add some randomness to simulate turbulence during stall
-            let turbulence = CGVector(
-                dx: CGFloat.random(in: -1...1) * (1.0 - stallFactor) * 2.0,
-                dy: CGFloat.random(in: -1...1) * (1.0 - stallFactor) * 2.0
-            )
-            physicsBody.applyForce(turbulence)
-            
-            // Apply torque to simulate tendency to spin during stall
-            let stallTorque = CGFloat.random(in: -0.5...0.5) * (1.0 - stallFactor) * 0.5
-            physicsBody.applyTorque(stallTorque)
-        }
+        // Set up basic physics body (physics behavior handled by PhysicsService)
+        setupPhysicsBody()
         
-        // Apply drag based on angle of attack
-        // More drag when not aligned with airflow
-        let angleOfAttackFactor = abs(sin(angleOfAttack))
-        let dragCoefficient = foldType.physicsProperties.drag * (1.0 + angleOfAttackFactor * 2.0)
+        // Set name for identification
+        self.name = "airplane"
         
-        let dragForce = CGVector(
-            dx: -velocity.dx * dragCoefficient * speedFactor,
-            dy: -velocity.dy * dragCoefficient * speedFactor
-        )
+        // Set z-position to appear above background
+        self.zPosition = 10
         
-        physicsBody.applyForce(dragForce)
+        // Apply design texture if available
+        applyDesign()
     }
     
-    /// Limit the airplane's speed to its maximum value
-    private func limitSpeed() {
-        guard let physicsBody = node.physicsBody else { return }
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    // MARK: - Physics Body Setup
+    
+    /// Set up the basic physics body for this airplane
+    /// Physics behavior is handled by PhysicsService
+    private func setupPhysicsBody() {
+        // Create a physics body based on the texture
+        physicsBody = SKPhysicsBody(rectangleOf: size)
         
-        let velocity = physicsBody.velocity
-        let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
+        // Configure basic physics properties (detailed physics handled by PhysicsService)
+        physicsBody?.isDynamic = true
+        physicsBody?.allowsRotation = true
+        physicsBody?.affectedByGravity = true
+        physicsBody?.restitution = 0.2
+        physicsBody?.friction = 0.2
         
-        if speed > maxSpeed {
-            let scale = maxSpeed / speed
-            physicsBody.velocity = CGVector(dx: velocity.dx * scale, dy: velocity.dy * scale)
+        // Set initial physics properties based on airplane configuration
+        updatePhysicsProperties()
+        
+        // Set up collision detection
+        physicsBody?.categoryBitMask = PhysicsCategory.airplane
+        physicsBody?.contactTestBitMask = PhysicsCategory.obstacle | PhysicsCategory.collectible | PhysicsCategory.ground
+        physicsBody?.collisionBitMask = PhysicsCategory.obstacle | PhysicsCategory.ground | PhysicsCategory.boundary
+    }
+    
+    // MARK: - Configuration Methods
+    
+    /// Set the fold type and update physics properties
+    func setFold(_ newFold: FoldType) {
+        fold = newFold
+        updatePhysicsProperties()
+    }
+    
+    /// Set the design type and update visual appearance
+    func setDesign(_ newDesign: DesignType) {
+        design = newDesign
+        applyDesign()
+    }
+    
+    /// Update physics properties based on current airplane configuration
+    /// This sets the base physics properties that PhysicsService will use
+    private func updatePhysicsProperties() {
+        guard let physicsBody = physicsBody else { return }
+        
+        let multiplier = fold.physicsMultiplier
+        physicsBody.mass = type.mass * multiplier.mass
+        physicsBody.linearDamping = type.linearDamping * (2.0 - multiplier.lift)
+        physicsBody.angularDamping = type.angularDamping * (2.0 - multiplier.turnRate)
+    }
+    
+    // MARK: - Physics Integration (Backward Compatibility)
+    
+    /// Apply forces to the airplane based on tilt input
+    /// Note: This method now delegates to PhysicsService for actual physics calculations
+    /// Kept for backward compatibility - PhysicsService should be used directly
+    func applyForces(tiltX: CGFloat, tiltY: CGFloat) {
+        // Update tilt angle for visual representation
+        updateTiltAngle()
+        
+        // Physics calculations are now handled by PhysicsService
+        // This method is kept for backward compatibility but should be called through PhysicsService
+    }
+    
+    /// Update tilt angle based on current velocity (for visual representation)
+    private func updateTiltAngle() {
+        if let physicsBody = physicsBody {
+            tiltAngle = atan2(physicsBody.velocity.dy, physicsBody.velocity.dx)
         }
     }
     
-    /// Apply rotation to bank the airplane
-    func bank(amount: CGFloat) {
-        node.physicsBody?.applyTorque(amount)
+    // MARK: - Visual State Management
+    
+    /// Update the airplane's visual state based on its physics state
+    /// This method handles visual representation only - physics is managed by PhysicsService
+    func updateVisualState() {
+        guard let physicsBody = physicsBody else { return }
         
-        // Apply banking physics - when banked, some lift becomes lateral movement
-        if abs(amount) > 0.1 {
-            guard let physicsBody = node.physicsBody else { return }
-            
-            // Get current velocity
-            let velocity = physicsBody.velocity
-            let speed = sqrt(velocity.dx * velocity.dx + velocity.dy * velocity.dy)
-            
-            // Only apply banking physics if we have sufficient speed
-            if speed > minSpeed {
-                // Calculate bank angle from current rotation
-                let bankAngle = node.zRotation
-                
-                // Apply lateral force based on bank angle
-                // This simulates the airplane turning when banked
-                let turnForce = CGVector(
-                    dx: sin(bankAngle) * amount * 2.0,
-                    dy: -cos(bankAngle) * amount * 2.0
-                )
-                
-                physicsBody.applyForce(turnForce)
-            }
+        // Calculate speed for visual effects
+        let speed = sqrt(physicsBody.velocity.dx * physicsBody.velocity.dx + 
+                         physicsBody.velocity.dy * physicsBody.velocity.dy)
+        
+        // Update flying state for visual effects
+        isFlying = speed > 50.0
+        
+        // Update tilt angle for visual representation
+        updateTiltAngle()
+        
+        // Update rotation based on velocity direction
+        let targetRotation = atan2(physicsBody.velocity.dy, physicsBody.velocity.dx)
+        let rotationAction = SKAction.rotate(toAngle: targetRotation, duration: 0.1)
+        run(rotationAction)
+        
+        // Add visual effects based on speed
+        if isFlying {
+            addTrailEffect()
         }
     }
     
-    /// Handle impact with obstacle
-    func handleImpact() {
-        // Slow down the airplane
-        if let velocity = node.physicsBody?.velocity {
-            node.physicsBody?.velocity = CGVector(
-                dx: velocity.dx * 0.7,
-                dy: velocity.dy * 0.7
-            )
-        }
+    /// Add a trail effect to the airplane for visual feedback
+    private func addTrailEffect() {
+        // Create a small particle for the trail
+        let trail = SKSpriteNode(color: .white, size: CGSize(width: 5, height: 5))
+        trail.position = CGPoint(x: -size.width / 2, y: 0) // Position at the back of the airplane
+        trail.alpha = 0.7
+        trail.zPosition = -1 // Behind the airplane
         
-        // Visual feedback
+        // Add to parent (not to the airplane itself)
+        parent?.addChild(trail)
+        
+        // Fade and remove
         let fadeAction = SKAction.sequence([
-            SKAction.fadeAlpha(to: 0.5, duration: 0.1),
-            SKAction.fadeAlpha(to: 1.0, duration: 0.1)
+            SKAction.fadeOut(withDuration: 0.5),
+            SKAction.removeFromParent()
         ])
+        trail.run(fadeAction)
+    }
+    
+    /// Reset the airplane to its initial state
+    func reset() {
+        // Reset physics state
+        physicsBody?.velocity = CGVector.zero
+        physicsBody?.angularVelocity = 0
         
-        node.run(SKAction.repeat(fadeAction, count: 3))
+        // Reset visual state
+        removeAllActions()
+        zRotation = 0
+        isFlying = false
+        tiltAngle = 0.0
+    }
+    
+    /// Apply the current design to the airplane's visual appearance
+    private func applyDesign() {
+        // Attempt to load the design texture using safe loading
+        // If texture exists, it would be applied here
+        if let designTexture = SKTexture.safeTexture(imageNamed: design.textureName) {
+            // Design texture found - apply it
+            self.texture = designTexture
+            self.colorBlendFactor = 0.0
+            return
+        }
+        
+        // Fallback: apply color tint based on the design
+        // This ensures visual distinction even without texture assets
+        colorBlendFactor = 0.3
+        switch design {
+        case .plain:
+            color = .white
+        case .striped:
+            color = .blue
+        case .dotted:
+            color = .green
+        case .camouflage:
+            color = .brown
+        case .flames:
+            color = .red
+        case .rainbow:
+            color = .purple
+        }
     }
 }
 
