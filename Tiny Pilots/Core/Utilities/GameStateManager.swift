@@ -134,6 +134,10 @@ class GameStateManager: GameStateManagerProtocol {
     }
     
     func saveGameStateAsync(completion: ((Bool) -> Void)? = nil) {
+        // Capture state on main thread to avoid data race
+        // currentState is @Published and may be modified on main thread
+        let stateToSave = currentState
+        
         // Perform encoding and I/O on background queue
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self = self else {
@@ -142,7 +146,7 @@ class GameStateManager: GameStateManagerProtocol {
             }
             
             do {
-                let data = try self.encoder.encode(self.currentState)
+                let data = try self.encoder.encode(stateToSave)
                 
                 // UserDefaults.set is thread-safe, but we'll do it on main for consistency
                 DispatchQueue.main.async {
