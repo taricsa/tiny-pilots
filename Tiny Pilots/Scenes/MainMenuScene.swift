@@ -7,164 +7,170 @@
 
 import SpriteKit
 import GameplayKit
+import SwiftUI
+import GameKit
+import SwiftData
 
 /// The main menu scene for Tiny Pilots
 class MainMenuScene: SKScene {
     
+    // MARK: - Properties
+    
+    /// ViewModel for managing menu state and navigation
+    private var viewModel: MainMenuViewModel!
+    
     // MARK: - Node Properties
     
-    // Menu buttons
-    private var playButton: SKNode?
-    private var hangarButton: SKNode?
-    private var achievementsButton: SKNode?
-    private var settingsButton: SKNode?
-    private var friendsButton: SKNode?
-    
     // Visual elements
-    private var logoNode: SKSpriteNode?
     private var backgroundNode: SKSpriteNode?
     private var paperAirplaneNode: SKSpriteNode?
+    
+    // UI elements
+    private var titleLabel: SKLabelNode?
+    private var playButton: SKSpriteNode?
+    private var hangarButton: SKSpriteNode?
+    private var settingsButton: SKSpriteNode?
+    private var achievementsButton: SKSpriteNode?
+    private var leaderboardsButton: SKSpriteNode?
+    
+    // Player info display
+    private var playerLevelLabel: SKLabelNode?
+    private var playerExperienceLabel: SKLabelNode?
+    private var experienceProgressBar: SKShapeNode?
     
     // MARK: - Scene Lifecycle
     
     override func sceneDidLoad() {
+        super.sceneDidLoad()
+        
         // Setup scene
         backgroundColor = .systemBlue
         
-        // Create UI elements
-        createBackground()
-        createLogo()
-        createButtons()
-        createDecorations()
+        // Initialize ViewModel if not already set
+        if viewModel == nil {
+            setupViewModel()
+        }
+        
+        // Initialize the ViewModel
+        viewModel.initialize()
     }
     
     override func didMove(to view: SKView) {
-        // Animate elements in
-        animateSceneIn()
+        // Setup scene elements
+        createBackground()
+        createDecorations()
+        createUI()
+        
+        // Setup accessibility
+        setupAccessibility()
+        
+        // Setup dynamic type observer
+        setupDynamicTypeObserver()
+        
+        // Start observing ViewModel state changes
+        startObservingViewModel()
+        
+        // Hide debug info in release builds
+        #if DEBUG
+        view.showsFPS = GameConfig.Debug.showsFPS
+        view.showsNodeCount = GameConfig.Debug.showsNodeCount
+        #else
+        view.showsFPS = false
+        view.showsNodeCount = false
+        #endif
+        
+        // Announce screen change for VoiceOver
+        VoiceOverNavigationManager.shared.announceScreenChange("Main Menu")
     }
     
-    // MARK: - Setup Methods
+    override func willMove(from view: SKView) {
+        super.willMove(from: view)
+        
+        // Clean up ViewModel
+        viewModel?.cleanup()
+    }
+    
+    // MARK: - Background Methods
     
     /// Create the background for the menu
     private func createBackground() {
+        // Create layered background for parallax effect
+        let layers = 3
+        let baseSpeed: CGFloat = 30.0
+        
+        // Create gradient background
         backgroundNode = SKSpriteNode(color: .systemBlue, size: size)
         backgroundNode?.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        backgroundNode?.zPosition = -10
+        backgroundNode?.zPosition = -20
         
-        // Add gradient overlay
-        let gradientNode = SKSpriteNode(color: .clear, size: size)
-        gradientNode.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        gradientNode.zPosition = -5
+        // Add gradient overlay for depth if it exists
+        var gradientNode: SKSpriteNode?
+        if let _ = UIImage(named: "gradient_overlay") {
+            gradientNode = SKSpriteNode(imageNamed: "gradient_overlay")
+            gradientNode?.size = size
+            gradientNode?.position = CGPoint(x: size.width / 2, y: size.height / 2)
+            gradientNode?.zPosition = -15
+            gradientNode?.alpha = 0.4
+        }
         
-        // Add clouds (placeholder - in production would use proper textures)
-        for _ in 0..<10 {
-            let cloudSize = CGSize(width: CGFloat.random(in: 50...150), height: CGFloat.random(in: 30...80))
-            let cloud = SKSpriteNode(color: .white, size: cloudSize)
-            cloud.alpha = 0.7
-            cloud.position = CGPoint(
-                x: CGFloat.random(in: 0...size.width),
-                y: CGFloat.random(in: size.height * 0.5...size.height * 0.9)
-            )
-            cloud.zPosition = -8
+        // Create cloud layers with different speeds for parallax effect
+        for layer in 0..<layers {
+            let layerNode = SKNode()
+            layerNode.zPosition = CGFloat(-10 + layer)
             
-            // Add drift animation
-            let driftDuration = TimeInterval.random(in: 30...60)
-            let driftDistance = size.width + cloudSize.width * 2
-            let moveAction = SKAction.moveBy(x: driftDistance, y: 0, duration: driftDuration)
-            let resetAction = SKAction.moveTo(x: -cloudSize.width, duration: 0)
-            cloud.run(SKAction.repeatForever(SKAction.sequence([moveAction, resetAction])))
+            let cloudCount = 6 - layer * 2 // Fewer clouds in back layers
+            let layerSpeed = baseSpeed * (CGFloat(layer + 1) / CGFloat(layers))
+            let scale = 0.6 + CGFloat(layer) * 0.2 // Larger clouds in front
+            let alpha = 0.4 + CGFloat(layer) * 0.2 // More opaque in front
             
-            addChild(cloud)
+            for _ in 0..<cloudCount {
+                let cloudSize = CGSize(
+                    width: CGFloat.random(in: 60...180) * scale,
+                    height: CGFloat.random(in: 40...100) * scale
+                )
+                let cloud = SKShapeNode(rectOf: cloudSize, cornerRadius: cloudSize.height / 2)
+                cloud.fillColor = .white
+                cloud.strokeColor = .clear
+                cloud.alpha = alpha
+                cloud.position = CGPoint(
+                    x: CGFloat.random(in: 0...size.width),
+                    y: CGFloat.random(in: size.height * 0.3...size.height * 0.9)
+                )
+                
+                // Add drift animation with parallax effect
+                let driftDuration = TimeInterval(size.width / layerSpeed)
+                let moveAction = SKAction.moveBy(x: size.width + cloudSize.width * 2, y: 0, duration: driftDuration)
+                let resetAction = SKAction.moveTo(x: -cloudSize.width, duration: 0)
+                cloud.run(SKAction.repeatForever(SKAction.sequence([moveAction, resetAction])))
+                
+                layerNode.addChild(cloud)
+            }
+            
+            addChild(layerNode)
         }
         
         if let backgroundNode = backgroundNode {
             addChild(backgroundNode)
         }
-        addChild(gradientNode)
-    }
-    
-    /// Create the game logo
-    private func createLogo() {
-        // In a real implementation, this would use an actual logo image
-        logoNode = SKSpriteNode(color: .white, size: CGSize(width: 300, height: 100))
-        logoNode?.position = CGPoint(x: size.width / 2, y: size.height * 0.8)
         
-        // Add text label (placeholder for actual logo graphic)
-        let logoLabel = SKLabelNode(text: "TINY PILOTS")
-        logoLabel.fontName = "AvenirNext-Bold"
-        logoLabel.fontSize = 36
-        logoLabel.fontColor = .systemBlue
-        logoLabel.position = CGPoint(x: 0, y: -12) // Center in the white box
-        
-        logoNode?.addChild(logoLabel)
-        
-        if let logoNode = logoNode {
-            addChild(logoNode)
+        if let gradientNode = gradientNode {
+            addChild(gradientNode)
         }
-    }
-    
-    /// Create the menu buttons
-    private func createButtons() {
-        // Define button size and spacing
-        let buttonSize = CGSize(width: 250, height: 60)
-        let buttonSpacing: CGFloat = 70
-        let startY = size.height * 0.45
         
-        // Create button nodes
-        let buttonData = [
-            (title: "Play", name: "playButton"),
-            (title: "Airplane Hangar", name: "hangarButton"),
-            (title: "Achievements", name: "achievementsButton"),
-            (title: "Settings", name: "settingsButton"),
-            (title: "Friends", name: "friendsButton")
-        ]
-        
-        for (index, data) in buttonData.enumerated() {
-            let button = createButton(title: data.title, size: buttonSize)
-            button.position = CGPoint(x: size.width / 2, y: startY - CGFloat(index) * buttonSpacing)
-            button.name = data.name
-            
-            addChild(button)
-            
-            // Store reference to specific buttons
-            switch data.name {
-            case "playButton": playButton = button
-            case "hangarButton": hangarButton = button
-            case "achievementsButton": achievementsButton = button
-            case "settingsButton": settingsButton = button
-            case "friendsButton": friendsButton = button
-            default: break
-            }
+        // Add subtle color animation to background
+        let colorChange = SKAction.customAction(withDuration: 10.0) { node, time in
+            let progress = time / 10.0
+            let hue = CGFloat(sin(progress * .pi * 2) * 0.05 + 0.6) // Subtle blue variation
+            self.backgroundNode?.color = UIColor(hue: hue, saturation: 0.6, brightness: 1.0, alpha: 1.0)
         }
-    }
-    
-    /// Create an individual button
-    private func createButton(title: String, size: CGSize) -> SKNode {
-        let button = SKNode()
-        
-        // Create button background
-        let background = SKShapeNode(rectOf: size, cornerRadius: 10)
-        background.fillColor = .white
-        background.strokeColor = .darkGray
-        background.lineWidth = 2
-        
-        // Create button label
-        let label = SKLabelNode(text: title)
-        label.fontName = "AvenirNext-DemiBold"
-        label.fontSize = 24
-        label.fontColor = .systemBlue
-        label.verticalAlignmentMode = .center
-        
-        button.addChild(background)
-        button.addChild(label)
-        
-        return button
+        backgroundNode?.run(SKAction.repeatForever(colorChange))
     }
     
     /// Create decorative elements for the menu
     private func createDecorations() {
         // Add a paper airplane decoration that flies across the screen
-        paperAirplaneNode = SKSpriteNode(color: .white, size: CGSize(width: 60, height: 40))
+        paperAirplaneNode = SKSpriteNode(imageNamed: "paperplane")
+        paperAirplaneNode?.size = CGSize(width: 60, height: 40)
         paperAirplaneNode?.position = CGPoint(x: -30, y: size.height * 0.6)
         paperAirplaneNode?.zRotation = CGFloat.pi * 0.1 // Slight angle
         
@@ -192,310 +198,264 @@ class MainMenuScene: SKScene {
         }
     }
     
-    // MARK: - Animation Methods
-    
-    /// Animate the scene elements when the scene appears
-    private func animateSceneIn() {
-        // Set initial states
-        logoNode?.alpha = 0
-        logoNode?.setScale(0.7)
-        
-        // Animate logo
-        logoNode?.run(SKAction.group([
-            SKAction.fadeIn(withDuration: 0.5),
-            SKAction.scale(to: 1.0, duration: 0.5)
-        ]))
-        
-        // Animate buttons
-        let buttons = [playButton, hangarButton, achievementsButton, settingsButton, friendsButton]
-        
-        for (index, button) in buttons.enumerated() {
-            button?.alpha = 0
-            button?.setScale(0.8)
-            
-            let delay = 0.2 + 0.1 * Double(index)
-            button?.run(SKAction.sequence([
-                SKAction.wait(forDuration: delay),
-                SKAction.group([
-                    SKAction.fadeIn(withDuration: 0.3),
-                    SKAction.scale(to: 1.0, duration: 0.3)
-                ])
-            ]))
-        }
-    }
-    
-    // MARK: - Touch Handling
-    
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        let location = touch.location(in: self)
-        let touchedNodes = nodes(at: location)
-        
-        for node in touchedNodes {
-            // Find the button node if we touched a child of it
-            var buttonNode = node
-            while buttonNode.name == nil && buttonNode.parent != nil {
-                buttonNode = buttonNode.parent!
-            }
-            
-            // Handle button tap
-            switch buttonNode.name {
-            case "playButton":
-                handlePlayButtonTap()
-            case "hangarButton":
-                handleHangarButtonTap()
-            case "achievementsButton":
-                handleAchievementsButtonTap()
-            case "settingsButton":
-                handleSettingsButtonTap()
-            case "friendsButton":
-                handleFriendsButtonTap()
-            default:
-                break
-            }
-        }
-    }
-    
-    // MARK: - Button Handlers
-    
-    private func handlePlayButtonTap() {
-        // Animate button press
-        animateButtonPress(playButton)
-        
-        // Present game mode selection scene
-        let gameModeScene = GameModeSelectionScene(size: size)
-        let transition = SKTransition.fade(withDuration: 0.5)
-        view?.presentScene(gameModeScene, transition: transition)
-    }
-    
-    private func handleHangarButtonTap() {
-        // Animate button press
-        animateButtonPress(hangarButton)
-        
-        // Present airplane customization scene
-        // This would be implemented in a real game
-        print("Opening airplane hangar")
-    }
-    
-    private func handleAchievementsButtonTap() {
-        // Animate button press
-        animateButtonPress(achievementsButton)
-        
-        // Open achievements
-        // This would integrate with Game Center in a real game
-        print("Opening achievements")
-    }
-    
-    private func handleSettingsButtonTap() {
-        // Animate button press
-        animateButtonPress(settingsButton)
-        
-        // Present settings scene
-        // This would be implemented in a real game
-        print("Opening settings")
-    }
-    
-    private func handleFriendsButtonTap() {
-        // Animate button press
-        animateButtonPress(friendsButton)
-        
-        // Open friends list
-        // This would integrate with Game Center in a real game
-        print("Opening friends")
-    }
-    
-    /// Animate a button press
-    private func animateButtonPress(_ button: SKNode?) {
-        guard let button = button else { return }
-        
-        // Scale down and back up
-        let scaleDown = SKAction.scale(to: 0.9, duration: 0.1)
-        let scaleUp = SKAction.scale(to: 1.0, duration: 0.1)
-        button.run(SKAction.sequence([scaleDown, scaleUp]))
-    }
-}
-
-/// Game mode selection scene
-class GameModeSelectionScene: SKScene {
-    // MARK: - Properties
-    
-    // UI elements
-    private var titleLabel: SKLabelNode?
-    private var freeFlightButton: SKNode?
-    private var challengeButton: SKNode?
-    private var dailyRunButton: SKNode?
-    private var backButton: SKNode?
-    private var environmentButton: SKNode?
-    private var currentEnvironmentLabel: SKLabelNode?
-    
-    // MARK: - Scene Lifecycle
-    
-    override func didMove(to view: SKView) {
-        // Setup scene
-        backgroundColor = .systemBlue
-        
-        // Create UI elements
-        createBackground()
-        createTitle()
-        createButtons()
-        createEnvironmentSelector()
-        
-        // Animate elements in
-        animateSceneIn()
-    }
-    
     // MARK: - Setup Methods
     
-    /// Create the background for the scene
-    private func createBackground() {
-        let backgroundNode = SKSpriteNode(color: .systemBlue, size: size)
-        backgroundNode.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        backgroundNode.zPosition = -10
-        addChild(backgroundNode)
-        
-        // Add gradient overlay (would use a proper gradient in production)
-        let gradientNode = SKSpriteNode(color: .clear, size: size)
-        gradientNode.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        gradientNode.zPosition = -5
-        addChild(gradientNode)
+    /// Set the ViewModel for this scene
+    /// - Parameter viewModel: The MainMenuViewModel to use
+    func setViewModel(_ viewModel: MainMenuViewModel) {
+        self.viewModel = viewModel
+    }
+    
+    /// Setup the ViewModel using dependency injection
+    private func setupViewModel() {
+        do {
+            let gameCenterService = try DIContainer.shared.resolve(GameCenterServiceProtocol.self)
+            let audioService = try DIContainer.shared.resolve(AudioServiceProtocol.self)
+            let modelContext = try DIContainer.shared.resolve(ModelContext.self)
+            
+            viewModel = MainMenuViewModel(
+                gameCenterService: gameCenterService,
+                audioService: audioService,
+                modelContext: modelContext
+            )
+        } catch {
+            fatalError("Failed to setup MainMenuViewModel: \(error)")
+        }
+    }
+    
+    /// Create UI elements
+    private func createUI() {
+        createTitle()
+        createMenuButtons()
+        createPlayerInfo()
     }
     
     /// Create the title label
     private func createTitle() {
-        titleLabel = SKLabelNode(text: "SELECT GAME MODE")
-        titleLabel?.fontName = "AvenirNext-Bold"
-        titleLabel?.fontSize = 36
+        titleLabel = SKLabelNode(fontNamed: "Arial-Bold")
+        titleLabel?.text = "Tiny Pilots"
+        titleLabel?.configureDynamicType(baseSize: 48, textStyle: .largeTitle)
         titleLabel?.fontColor = .white
         titleLabel?.position = CGPoint(x: size.width / 2, y: size.height * 0.8)
+        titleLabel?.zPosition = 10
+        
+        // Add shadow effect
+        let shadowLabel = SKLabelNode(fontNamed: "Arial-Bold")
+        shadowLabel.text = "Tiny Pilots"
+        shadowLabel.configureDynamicType(baseSize: 48, textStyle: .largeTitle)
+        shadowLabel.fontColor = .black
+        shadowLabel.alpha = 0.3
+        shadowLabel.position = CGPoint(x: 2, y: -2)
+        titleLabel?.addChild(shadowLabel)
         
         if let titleLabel = titleLabel {
             addChild(titleLabel)
         }
     }
     
-    /// Create the mode selection buttons
-    private func createButtons() {
-        // Define button size and spacing
-        let buttonSize = CGSize(width: 250, height: 60)
-        let buttonSpacing: CGFloat = 80
-        let startY = size.height * 0.55
+    /// Create menu buttons
+    private func createMenuButtons() {
+        let buttonWidth: CGFloat = 200
+        let buttonHeight: CGFloat = 50
+        let buttonSpacing: CGFloat = 60
+        let startY = size.height * 0.6
         
-        // Create button nodes
-        let buttonData = [
-            (title: "Free Flight", name: "freeFlightButton"),
-            (title: "Challenge Mode", name: "challengeButton"),
-            (title: "Daily Run", name: "dailyRunButton")
-        ]
+        // Play button
+        playButton = createButton(
+            text: "Play",
+            size: CGSize(width: buttonWidth, height: buttonHeight),
+            position: CGPoint(x: size.width / 2, y: startY),
+            name: "playButton"
+        )
         
-        for (index, data) in buttonData.enumerated() {
-            let button = createButton(title: data.title, size: buttonSize)
-            button.position = CGPoint(x: size.width / 2, y: startY - CGFloat(index) * buttonSpacing)
-            button.name = data.name
-            
-            addChild(button)
-            
-            // Store reference to specific buttons
-            switch data.name {
-            case "freeFlightButton": freeFlightButton = button
-            case "challengeButton": challengeButton = button
-            case "dailyRunButton": dailyRunButton = button
-            default: break
-            }
-        }
+        // Hangar button
+        hangarButton = createButton(
+            text: "Hangar",
+            size: CGSize(width: buttonWidth, height: buttonHeight),
+            position: CGPoint(x: size.width / 2, y: startY - buttonSpacing),
+            name: "hangarButton"
+        )
         
-        // Create back button
-        backButton = createButton(title: "Back", size: CGSize(width: 120, height: 50))
-        backButton?.position = CGPoint(x: 80, y: 50)
-        backButton?.name = "backButton"
+        // Settings button
+        settingsButton = createButton(
+            text: "Settings",
+            size: CGSize(width: buttonWidth, height: buttonHeight),
+            position: CGPoint(x: size.width / 2, y: startY - buttonSpacing * 2),
+            name: "settingsButton"
+        )
         
-        if let backButton = backButton {
-            addChild(backButton)
-        }
+        // Achievements button
+        achievementsButton = createButton(
+            text: "Achievements",
+            size: CGSize(width: buttonWidth, height: buttonHeight),
+            position: CGPoint(x: size.width / 2, y: startY - buttonSpacing * 3),
+            name: "achievementsButton"
+        )
+        
+        // Leaderboards button
+        leaderboardsButton = createButton(
+            text: "Leaderboards",
+            size: CGSize(width: buttonWidth, height: buttonHeight),
+            position: CGPoint(x: size.width / 2, y: startY - buttonSpacing * 4),
+            name: "leaderboardsButton"
+        )
     }
     
-    /// Create environment selector
-    private func createEnvironmentSelector() {
-        // Create environment button
-        environmentButton = createButton(title: "Change Environment", size: CGSize(width: 250, height: 50))
-        environmentButton?.position = CGPoint(x: size.width / 2, y: size.height * 0.2)
-        environmentButton?.name = "environmentButton"
+    /// Create a menu button
+    private func createButton(text: String, size: CGSize, position: CGPoint, name: String) -> SKSpriteNode {
+        let button = SKSpriteNode(color: .systemBlue, size: size)
+        button.position = position
+        button.zPosition = 10
+        button.name = name
         
-        if let environmentButton = environmentButton {
-            addChild(environmentButton)
-        }
+        // Add border
+        let border = SKShapeNode(rectOf: size, cornerRadius: 8)
+        border.strokeColor = .white
+        border.lineWidth = 2
+        border.fillColor = .clear
+        button.addChild(border)
         
-        // Create current environment label
-        currentEnvironmentLabel = SKLabelNode(text: "Current: \(GameManager.shared.currentEnvironmentType.displayName)")
-        currentEnvironmentLabel?.fontName = "AvenirNext-Regular"
-        currentEnvironmentLabel?.fontSize = 18
-        currentEnvironmentLabel?.fontColor = .white
-        currentEnvironmentLabel?.position = CGPoint(x: size.width / 2, y: size.height * 0.15)
-        
-        if let currentEnvironmentLabel = currentEnvironmentLabel {
-            addChild(currentEnvironmentLabel)
-        }
-    }
-    
-    /// Create an individual button
-    private func createButton(title: String, size: CGSize) -> SKNode {
-        let button = SKNode()
-        
-        // Create button background
-        let background = SKShapeNode(rectOf: size, cornerRadius: 10)
-        background.fillColor = .white
-        background.strokeColor = .darkGray
-        background.lineWidth = 2
-        
-        // Create button label
-        let label = SKLabelNode(text: title)
-        label.fontName = "AvenirNext-DemiBold"
-        label.fontSize = 24
-        label.fontColor = .systemBlue
+        // Add label
+        let label = SKLabelNode(fontNamed: "Arial-Bold")
+        label.text = text
+        label.configureDynamicType(baseSize: 20, textStyle: .body)
+        label.fontColor = .white
         label.verticalAlignmentMode = .center
-        
-        button.addChild(background)
         button.addChild(label)
         
+        addChild(button)
         return button
+    }
+    
+    /// Create player info display
+    private func createPlayerInfo() {
+        // Player level
+        playerLevelLabel = SKLabelNode(fontNamed: "Arial-Bold")
+        playerLevelLabel?.configureDynamicType(baseSize: 18, textStyle: .headline)
+        playerLevelLabel?.fontColor = .white
+        playerLevelLabel?.position = CGPoint(x: 100, y: size.height - 50)
+        playerLevelLabel?.zPosition = 10
+        
+        if let playerLevelLabel = playerLevelLabel {
+            addChild(playerLevelLabel)
+        }
+        
+        // Player experience
+        playerExperienceLabel = SKLabelNode(fontNamed: "Arial")
+        playerExperienceLabel?.configureDynamicType(baseSize: 14, textStyle: .body)
+        playerExperienceLabel?.fontColor = .lightGray
+        playerExperienceLabel?.position = CGPoint(x: 100, y: size.height - 75)
+        playerExperienceLabel?.zPosition = 10
+        
+        if let playerExperienceLabel = playerExperienceLabel {
+            addChild(playerExperienceLabel)
+        }
+        
+        // Experience progress bar
+        let progressBarWidth: CGFloat = 150
+        let progressBarHeight: CGFloat = 8
+        
+        // Background bar
+        let progressBackground = SKShapeNode(rectOf: CGSize(width: progressBarWidth, height: progressBarHeight), cornerRadius: 4)
+        progressBackground.fillColor = .darkGray
+        progressBackground.strokeColor = .clear
+        progressBackground.position = CGPoint(x: 100, y: size.height - 95)
+        progressBackground.zPosition = 10
+        addChild(progressBackground)
+        
+        // Progress bar
+        experienceProgressBar = SKShapeNode(rectOf: CGSize(width: progressBarWidth, height: progressBarHeight), cornerRadius: 4)
+        experienceProgressBar?.fillColor = .systemYellow
+        experienceProgressBar?.strokeColor = .clear
+        experienceProgressBar?.position = CGPoint(x: 100, y: size.height - 95)
+        experienceProgressBar?.zPosition = 11
+        
+        if let experienceProgressBar = experienceProgressBar {
+            addChild(experienceProgressBar)
+        }
+    }
+    
+    // MARK: - ViewModel Observation
+    
+    /// Start observing ViewModel state changes
+    private func startObservingViewModel() {
+        // Note: With @Observable, the UI will automatically update when ViewModel properties change
+        // We can add specific observation logic here if needed
+        updateUI()
+    }
+    
+    /// Update UI based on ViewModel state
+    private func updateUI() {
+        guard let viewModel = viewModel else { return }
+        
+        // Update player level
+        playerLevelLabel?.text = "Level \(viewModel.playerLevel)"
+        
+        // Update experience
+        playerExperienceLabel?.text = "XP: \(viewModel.playerExperience) / \(viewModel.experienceToNextLevel)"
+        
+        // Update progress bar
+        let progress = CGFloat(viewModel.levelProgress)
+        let progressBarWidth: CGFloat = 150
+        let newWidth = progressBarWidth * progress
+        experienceProgressBar?.path = CGPath(
+            roundedRect: CGRect(x: -newWidth/2, y: -4, width: newWidth, height: 8),
+            cornerWidth: 4,
+            cornerHeight: 4,
+            transform: nil
+        )
+        
+        // Update button availability based on Game Center status
+        achievementsButton?.alpha = viewModel.isGameCenterAvailable ? 1.0 : 0.5
+        leaderboardsButton?.alpha = viewModel.isGameCenterAvailable ? 1.0 : 0.5
+        
+        // Update accessibility information
+        updateAccessibility()
+        
+        // Handle animations
+        if viewModel.animateTitle {
+            animateTitle()
+        }
+        
+        if viewModel.animateButtons {
+            animateButtons()
+        }
     }
     
     // MARK: - Animation Methods
     
-    /// Animate the scene elements when the scene appears
-    private func animateSceneIn() {
-        // Set initial states
-        titleLabel?.alpha = 0
-        titleLabel?.setScale(0.7)
+    /// Animate title entrance
+    private func animateTitle() {
+        guard let titleLabel = titleLabel else { return }
         
-        // Animate title
-        titleLabel?.run(SKAction.group([
-            SKAction.fadeIn(withDuration: 0.5),
-            SKAction.scale(to: 1.0, duration: 0.5)
-        ]))
+        titleLabel.alpha = 0
+        titleLabel.setScale(0.5)
         
-        // Animate buttons
-        let buttons = [freeFlightButton, challengeButton, dailyRunButton, environmentButton, backButton]
+        let fadeIn = SKAction.fadeIn(withDuration: 0.5)
+        let scaleUp = SKAction.scale(to: 1.0, duration: 0.5)
+        let group = SKAction.group([fadeIn, scaleUp])
+        
+        titleLabel.run(group)
+    }
+    
+    /// Animate buttons entrance
+    private func animateButtons() {
+        let buttons = [playButton, hangarButton, settingsButton, achievementsButton, leaderboardsButton]
         
         for (index, button) in buttons.enumerated() {
-            button?.alpha = 0
-            button?.setScale(0.8)
+            guard let button = button else { continue }
             
-            let delay = 0.2 + 0.1 * Double(index)
-            button?.run(SKAction.sequence([
-                SKAction.wait(forDuration: delay),
-                SKAction.group([
-                    SKAction.fadeIn(withDuration: 0.3),
-                    SKAction.scale(to: 1.0, duration: 0.3)
-                ])
-            ]))
+            button.alpha = 0
+            button.position.x = -200
+            
+            let delay = Double(index) * 0.1
+            let moveIn = SKAction.moveTo(x: size.width / 2, duration: 0.3)
+            let fadeIn = SKAction.fadeIn(withDuration: 0.3)
+            let group = SKAction.group([moveIn, fadeIn])
+            let sequence = SKAction.sequence([SKAction.wait(forDuration: delay), group])
+            
+            button.run(sequence)
         }
-        
-        // Animate environment label
-        currentEnvironmentLabel?.alpha = 0
-        currentEnvironmentLabel?.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.7),
-            SKAction.fadeIn(withDuration: 0.3)
-        ]))
     }
     
     // MARK: - Touch Handling
@@ -503,277 +463,233 @@ class GameModeSelectionScene: SKScene {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let location = touch.location(in: self)
-        let touchedNodes = nodes(at: location)
+        let touchedNode = atPoint(location)
         
-        for node in touchedNodes {
-            // Find the button node if we touched a child of it
-            var buttonNode = node
-            while buttonNode.name == nil && buttonNode.parent != nil {
-                buttonNode = buttonNode.parent!
-            }
-            
-            // Handle button tap
-            switch buttonNode.name {
-            case "freeFlightButton":
-                handleFreeFlightButtonTap()
-            case "challengeButton":
-                handleChallengeButtonTap()
-            case "dailyRunButton":
-                handleDailyRunButtonTap()
-            case "environmentButton":
-                handleEnvironmentButtonTap()
-            case "backButton":
-                handleBackButtonTap()
-            default:
-                break
-            }
+        handleButtonTap(touchedNode)
+    }
+    
+    /// Handle button tap
+    private func handleButtonTap(_ node: SKNode) {
+        guard let nodeName = node.name ?? node.parent?.name else { return }
+        
+        // Add button press animation
+        if let button = node as? SKSpriteNode ?? node.parent as? SKSpriteNode {
+            animateButtonPress(button)
+        }
+        
+        // Handle navigation through ViewModel
+        switch nodeName {
+        case "playButton":
+            viewModel.navigateTo(.gameMode)
+        case "hangarButton":
+            viewModel.navigateTo(.hangar)
+        case "settingsButton":
+            viewModel.navigateTo(.settings)
+        case "achievementsButton":
+            viewModel.showAchievements()
+        case "leaderboardsButton":
+            viewModel.showLeaderboards()
+        default:
+            break
         }
     }
     
-    // MARK: - Button Handlers
-    
-    private func handleFreeFlightButtonTap() {
-        // Animate button press
-        animateButtonPress(freeFlightButton)
-        
-        // Present flight scene with free flight mode
-        if let view = view {
-            let gameViewController = view.window?.rootViewController as? GameViewController
-            gameViewController?.presentFlightScene(in: view, mode: .freeFlight)
-        }
-    }
-    
-    private func handleChallengeButtonTap() {
-        // Animate button press
-        animateButtonPress(challengeButton)
-        
-        // Present flight scene with challenge mode
-        if let view = view {
-            let gameViewController = view.window?.rootViewController as? GameViewController
-            gameViewController?.presentFlightScene(in: view, mode: .challenge)
-        }
-    }
-    
-    private func handleDailyRunButtonTap() {
-        // Animate button press
-        animateButtonPress(dailyRunButton)
-        
-        // Check if player can participate in daily run
-        if GameManager.shared.canParticipateDailyRun() {
-            // Record participation
-            GameManager.shared.recordDailyRunParticipation()
-            
-            // Present flight scene with daily run mode
-            if let view = view {
-                let gameViewController = view.window?.rootViewController as? GameViewController
-                gameViewController?.presentFlightScene(in: view, mode: .dailyRun)
-            }
-        } else {
-            // Show message that daily run is already completed
-            showDailyRunCompletedMessage()
-        }
-    }
-    
-    private func handleEnvironmentButtonTap() {
-        // Animate button press
-        animateButtonPress(environmentButton)
-        
-        // Show environment selection menu
-        showEnvironmentSelectionMenu()
-    }
-    
-    private func handleBackButtonTap() {
-        // Animate button press
-        animateButtonPress(backButton)
-        
-        // Return to main menu
-        let mainMenuScene = MainMenuScene(size: size)
-        let transition = SKTransition.fade(withDuration: 0.5)
-        view?.presentScene(mainMenuScene, transition: transition)
-    }
-    
-    /// Animate a button press
-    private func animateButtonPress(_ button: SKNode?) {
-        guard let button = button else { return }
-        
-        // Scale down and back up
-        let scaleDown = SKAction.scale(to: 0.9, duration: 0.1)
+    /// Animate button press
+    private func animateButtonPress(_ button: SKSpriteNode) {
+        let scaleDown = SKAction.scale(to: 0.95, duration: 0.1)
         let scaleUp = SKAction.scale(to: 1.0, duration: 0.1)
-        button.run(SKAction.sequence([scaleDown, scaleUp]))
+        let sequence = SKAction.sequence([scaleDown, scaleUp])
+        button.run(sequence)
     }
     
-    /// Show a message that the daily run is already completed
-    private func showDailyRunCompletedMessage() {
-        // Create message background
-        let messageBackground = SKShapeNode(rectOf: CGSize(width: 400, height: 200), cornerRadius: 20)
-        messageBackground.fillColor = .white
-        messageBackground.strokeColor = .darkGray
-        messageBackground.lineWidth = 2
-        messageBackground.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        messageBackground.zPosition = 100
-        messageBackground.name = "messageBackground"
+    // MARK: - Accessibility Methods
+    
+    /// Setup accessibility for all UI elements
+    private func setupAccessibility() {
+        // Configure title accessibility
+        titleLabel?.makeAccessibleText("Tiny Pilots")
         
-        // Create message text
-        let messageText = SKLabelNode(text: "Daily Run Already Completed")
-        messageText.fontName = "AvenirNext-Bold"
-        messageText.fontSize = 24
-        messageText.fontColor = .systemBlue
-        messageText.position = CGPoint(x: 0, y: 30)
+        // Configure button accessibility with proper hints
+        playButton?.makeAccessibleButton(
+            label: "Play",
+            hint: "Start playing the game. Opens game mode selection."
+        )
         
-        // Create subtext
-        let subText = SKLabelNode(text: "Come back tomorrow for a new run!")
-        subText.fontName = "AvenirNext-Regular"
-        subText.fontSize = 18
-        subText.fontColor = .darkGray
-        subText.position = CGPoint(x: 0, y: -10)
+        hangarButton?.makeAccessibleButton(
+            label: "Hangar",
+            hint: "Customize your paper airplane. Opens airplane hangar."
+        )
         
-        // Create OK button
-        let okButton = SKShapeNode(rectOf: CGSize(width: 100, height: 40), cornerRadius: 10)
-        okButton.fillColor = .systemBlue
-        okButton.strokeColor = .darkGray
-        okButton.lineWidth = 1
-        okButton.position = CGPoint(x: 0, y: -60)
-        okButton.name = "okButton"
+        settingsButton?.makeAccessibleButton(
+            label: "Settings",
+            hint: "Adjust game settings. Opens settings menu."
+        )
         
-        let okText = SKLabelNode(text: "OK")
-        okText.fontName = "AvenirNext-Bold"
-        okText.fontSize = 20
-        okText.fontColor = .white
-        okText.verticalAlignmentMode = .center
-        okButton.addChild(okText)
+        achievementsButton?.makeAccessibleButton(
+            label: "Achievements",
+            hint: "View your game achievements. Opens Game Center achievements."
+        )
         
-        // Add to scene
-        messageBackground.addChild(messageText)
-        messageBackground.addChild(subText)
-        messageBackground.addChild(okButton)
-        addChild(messageBackground)
+        leaderboardsButton?.makeAccessibleButton(
+            label: "Leaderboards",
+            hint: "View global leaderboards. Opens Game Center leaderboards."
+        )
         
-        // Add tap handler for OK button
-        let tapHandler = SKAction.run { [weak self] in
-            self?.childNode(withName: "messageBackground")?.removeFromParent()
-        }
+        // Configure player info accessibility
+        setupPlayerInfoAccessibility()
         
-        okButton.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.1), // Small delay to prevent accidental taps
-            tapHandler
-        ]))
+        // Configure decorative elements
+        paperAirplaneNode?.removeAccessibility() // Decorative only
+        
+        // Setup navigation order
+        setupAccessibilityNavigationOrder()
     }
     
-    /// Show the environment selection menu
-    private func showEnvironmentSelectionMenu() {
-        // Create menu background
-        let menuBackground = SKShapeNode(rectOf: CGSize(width: 400, height: 400), cornerRadius: 20)
-        menuBackground.fillColor = .white
-        menuBackground.strokeColor = .darkGray
-        menuBackground.lineWidth = 2
-        menuBackground.position = CGPoint(x: size.width / 2, y: size.height / 2)
-        menuBackground.zPosition = 100
-        menuBackground.name = "environmentMenu"
+    /// Setup accessibility for player info elements
+    private func setupPlayerInfoAccessibility() {
+        guard let viewModel = viewModel else { return }
         
-        // Create title
-        let titleLabel = SKLabelNode(text: "Select Environment")
-        titleLabel.fontName = "AvenirNext-Bold"
-        titleLabel.fontSize = 24
-        titleLabel.fontColor = .systemBlue
-        titleLabel.position = CGPoint(x: 0, y: 150)
-        menuBackground.addChild(titleLabel)
+        // Player level label
+        playerLevelLabel?.makeAccessibleText("Level \(viewModel.playerLevel)")
         
-        // Get available environments
-        let availableEnvironments = GameManager.shared.getAvailableEnvironments()
-        let buttonHeight: CGFloat = 50
-        let buttonWidth: CGFloat = 300
-        let buttonSpacing: CGFloat = 60
-        let startY: CGFloat = 100
+        // Experience label with progress information
+        let experienceText = "Experience: \(viewModel.playerExperience) out of \(viewModel.experienceToNextLevel)"
+        playerExperienceLabel?.makeAccessibleText(experienceText)
         
-        // Create a button for each available environment
-        for (index, environmentType) in availableEnvironments.enumerated() {
-            let button = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 10)
-            button.fillColor = environmentType == GameManager.shared.currentEnvironmentType ? .systemGreen : .systemBlue
-            button.strokeColor = .darkGray
-            button.lineWidth = 1
-            button.position = CGPoint(x: 0, y: startY - CGFloat(index) * buttonSpacing)
-            button.name = "env_\(environmentType.rawValue)"
-            
-            let nameLabel = SKLabelNode(text: environmentType.displayName)
-            nameLabel.fontName = "AvenirNext-Bold"
-            nameLabel.fontSize = 20
-            nameLabel.fontColor = .white
-            nameLabel.verticalAlignmentMode = .center
-            button.addChild(nameLabel)
-            
-            menuBackground.addChild(button)
-        }
-        
-        // Create close button
-        let closeButton = SKShapeNode(rectOf: CGSize(width: 100, height: 40), cornerRadius: 10)
-        closeButton.fillColor = .systemRed
-        closeButton.strokeColor = .darkGray
-        closeButton.lineWidth = 1
-        closeButton.position = CGPoint(x: 0, y: -150)
-        closeButton.name = "closeEnvironmentMenu"
-        
-        let closeText = SKLabelNode(text: "Close")
-        closeText.fontName = "AvenirNext-Bold"
-        closeText.fontSize = 20
-        closeText.fontColor = .white
-        closeText.verticalAlignmentMode = .center
-        closeButton.addChild(closeText)
-        
-        menuBackground.addChild(closeButton)
-        
-        // Add to scene
-        addChild(menuBackground)
+        // Progress bar as adjustable element
+        let progressPercent = Int(viewModel.levelProgress * 100)
+        experienceProgressBar?.makeAccessibleAdjustable(
+            label: "Experience progress",
+            value: "\(progressPercent) percent",
+            hint: "Shows progress to next level"
+        )
     }
     
-    /// Handle environment selection
-    private func handleEnvironmentSelection(_ environmentRawValue: Int) {
-        // Close the menu
-        childNode(withName: "environmentMenu")?.removeFromParent()
+    /// Setup accessibility navigation order
+    private func setupAccessibilityNavigationOrder() {
+        let navigationOrder: [SKNode] = [
+            titleLabel,
+            playerLevelLabel,
+            playerExperienceLabel,
+            experienceProgressBar,
+            playButton,
+            hangarButton,
+            settingsButton,
+            achievementsButton,
+            leaderboardsButton
+        ].compactMap { $0 }
         
-        // Get the environment type from raw value
-        if let environmentType = Environment.EnvironmentType.allCases.first(where: { $0.rawValue == environmentRawValue }) {
-            // Set the environment
-            GameManager.shared.setEnvironment(type: environmentType)
-            
-            // Update the label
-            currentEnvironmentLabel?.text = "Current: \(environmentType.displayName)"
-            
-            // Show confirmation
-            let confirmationLabel = SKLabelNode(text: "Environment changed to \(environmentType.displayName)")
-            confirmationLabel.fontName = "AvenirNext-Bold"
-            confirmationLabel.fontSize = 20
-            confirmationLabel.fontColor = .white
-            confirmationLabel.position = CGPoint(x: size.width / 2, y: size.height / 2)
-            confirmationLabel.zPosition = 100
-            addChild(confirmationLabel)
-            
-            // Fade out confirmation
-            let fadeAction = SKAction.sequence([
-                SKAction.wait(forDuration: 1.5),
-                SKAction.fadeOut(withDuration: 0.5),
-                SKAction.removeFromParent()
-            ])
-            confirmationLabel.run(fadeAction)
+        VoiceOverNavigationManager.shared.setupNavigationOrder(for: navigationOrder)
+    }
+    
+    /// Update accessibility when UI changes
+    private func updateAccessibility() {
+        guard let viewModel = viewModel else { return }
+        
+        // Update player info accessibility
+        playerLevelLabel?.accessibilityLabel = "Level \(viewModel.playerLevel)"
+        
+        let experienceText = "Experience: \(viewModel.playerExperience) out of \(viewModel.experienceToNextLevel)"
+        playerExperienceLabel?.accessibilityLabel = experienceText
+        
+        let progressPercent = Int(viewModel.levelProgress * 100)
+        experienceProgressBar?.accessibilityValue = "\(progressPercent) percent"
+        
+        // Update button availability announcements
+        let gameCenterStatus = viewModel.isGameCenterAvailable ? "available" : "unavailable"
+        achievementsButton?.accessibilityHint = "View your game achievements. Game Center is \(gameCenterStatus)."
+        leaderboardsButton?.accessibilityHint = "View global leaderboards. Game Center is \(gameCenterStatus)."
+        
+        // Announce significant changes
+        if viewModel.levelProgress == 1.0 {
+            AccessibilityManager.shared.announceMessage("Level up! You are now level \(viewModel.playerLevel)", priority: .high)
         }
     }
     
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        let location = touch.location(in: self)
-        let touchedNodes = nodes(at: location)
+    // MARK: - Dynamic Type Support
+    
+    /// Setup observer for dynamic type changes
+    private func setupDynamicTypeObserver() {
+        NotificationCenter.default.addObserver(
+            forName: UIContentSizeCategory.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateDynamicTypeFonts()
+        }
+    }
+    
+    /// Update all fonts when dynamic type changes
+    private func updateDynamicTypeFonts() {
+        // Update title font
+        if let titleLabel = titleLabel as? SKLabelNode {
+            titleLabel.fontSize = DynamicTypeHelper.shared.scaledFontSize(48)
+        }
+        if let childLabel = titleLabel?.children.first as? SKLabelNode {
+            childLabel.fontSize = DynamicTypeHelper.shared.scaledFontSize(48)
+        }
         
-        // Check for environment menu interactions
-        if let environmentMenu = childNode(withName: "environmentMenu") {
-            for node in touchedNodes {
-                if node.name == "closeEnvironmentMenu" {
-                    environmentMenu.removeFromParent()
-                    return
-                } else if let name = node.name, name.hasPrefix("env_") {
-                    let envRawValue = Int(name.replacingOccurrences(of: "env_", with: "")) ?? 0
-                    handleEnvironmentSelection(envRawValue)
-                    return
+        // Update button fonts
+        updateButtonFonts()
+        
+        // Update player info fonts
+        playerLevelLabel?.updateDynamicType(baseSize: 18, textStyle: .headline)
+        playerExperienceLabel?.updateDynamicType(baseSize: 14, textStyle: .body)
+        
+        // Adjust layout if needed for accessibility sizes
+        if DynamicTypeHelper.shared.shouldUseCompactLayout {
+            adjustLayoutForLargeText()
+        }
+    }
+    
+    /// Update fonts for all buttons
+    private func updateButtonFonts() {
+        let buttons = [playButton, hangarButton, settingsButton, achievementsButton, leaderboardsButton]
+        
+        for button in buttons {
+            // Find the label child and update its font
+            for child in button?.children ?? [] {
+                if let label = child as? SKLabelNode {
+                    label.updateDynamicType(baseSize: 20, textStyle: .body)
                 }
             }
         }
     }
-} 
+    
+    /// Adjust layout for large text sizes
+    private func adjustLayoutForLargeText() {
+        // Increase button spacing for accessibility
+        let buttonSpacing: CGFloat = DynamicTypeHelper.shared.scaledSpacing(80)
+        let startY = size.height * 0.55 // Move buttons down slightly
+        
+        let buttons = [playButton, hangarButton, settingsButton, achievementsButton, leaderboardsButton]
+        
+        for (index, button) in buttons.enumerated() {
+            button?.position.y = startY - CGFloat(index) * buttonSpacing
+        }
+        
+        // Adjust player info position if needed
+        let scaledOffset = DynamicTypeHelper.shared.scaledSpacing(50)
+        playerLevelLabel?.position.y = size.height - scaledOffset
+        playerExperienceLabel?.position.y = size.height - scaledOffset - 25
+    }
+    
+    // MARK: - Navigation Methods
+    
+    /// Handle navigation to different screens
+    func handleNavigation(to destination: NavigationDestination) {
+        // Announce navigation for VoiceOver users
+        AccessibilityManager.shared.announceMenuNavigation(destination.displayName)
+        
+        // This would typically trigger a scene transition
+        // For now, we'll just log the navigation
+        print("Navigating to: \(destination.displayName)")
+        
+        // In a real implementation, this would:
+        // 1. Create the appropriate scene
+        // 2. Set up the scene with necessary ViewModels
+        // 3. Transition to the new scene
+    }
+}
+
+// End of MainMenuScene 

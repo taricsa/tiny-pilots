@@ -13,8 +13,13 @@ struct GameConfig {
     
     // MARK: - Debug Settings
     struct Debug {
+        #if DEBUG
         static let showsFPS = true
         static let showsNodeCount = true
+        #else
+        static let showsFPS = false
+        static let showsNodeCount = false
+        #endif
         static let showsPhysics = false
     }
     
@@ -97,5 +102,21 @@ struct GameConfig {
         static let challengeRefreshHours: Int = 24
         static let maxActiveChallenges: Int = 3
         static let maxDailyChallengeAttempts: Int = 1
+    }
+    
+    // MARK: - Game Center
+    struct GameCenter {
+        struct Leaderboards {
+            static let distanceFreePlay = "com.tinypilots.leaderboard.freeplay"
+            static let distanceChallenge = "com.tinypilots.leaderboard.challenge"
+            static let distanceDailyRun = "com.tinypilots.leaderboard.dailyrun"
+        }
+        
+        struct Achievements {
+            static let firstFlight = "com.tinypilots.achievement.firstflight"
+            static let distance1000 = "com.tinypilots.achievement.distance1000"
+            static let distance5000 = "com.tinypilots.achievement.distance5000"
+            static let distance10000 = "com.tinypilots.achievement.distance10000"
+        }
     }
 } 

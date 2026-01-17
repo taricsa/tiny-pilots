@@ -55,4 +55,119 @@ Tiny Pilots features tilt-based controls for navigating paper airplanes through 
 
 ## License
 
-© 2025. All rights reserved. 
+© 2025. All rights reserved.
+
+# Tiny Pilots - Environment System
+
+## Overview
+The environment system in Tiny Pilots provides diverse, interactive game worlds with unique visual elements, physics properties, and gameplay mechanics. Each environment offers a distinct experience through custom obstacles, collectibles, weather conditions, and visual effects.
+
+## Environments
+
+### Available Environments
+1. **Sunny Meadows** (Default)
+   - Light wind conditions
+   - Tree and fence obstacles
+   - Grassy terrain with rolling hills
+   - Unlocked by default
+
+2. **Alpine Heights**
+   - Strong wind conditions
+   - Mountain and rock obstacles
+   - Snowy terrain with peaks
+   - Unlocks at level 5
+
+3. **Coastal Breeze**
+   - Variable wind conditions
+   - Palm trees and umbrella obstacles
+   - Sandy beach terrain
+   - Unlocks at level 10
+
+4. **Urban Skyline**
+   - Variable wind conditions
+   - Buildings and billboard obstacles
+   - City terrain with skyscrapers
+   - Unlocks at level 15
+
+5. **Desert Canyon**
+   - Strong wind conditions
+   - Mesa and cactus obstacles
+   - Rocky canyon terrain
+   - Unlocks at level 20
+
+### Environment Features
+- **Dynamic Weather**: Each environment has unique wind patterns and weather conditions
+- **Parallax Backgrounds**: Multi-layered backgrounds create depth and immersion
+- **Interactive Elements**: Environment-specific obstacles and collectibles
+- **Visual Effects**: Custom particle effects and animations
+- **Ambient Audio**: Environment-specific sound effects and music
+
+## Technical Implementation
+
+### Core Classes
+- `Environment`: Manages environment properties and configuration
+- `ParallaxBackground`: Handles multi-layered scrolling backgrounds
+- `Obstacle`: Represents environment-specific obstacles
+- `Collectible`: Manages collectible items
+
+### Physics Integration
+- Wind effects through `PhysicsManager`
+- Environment-specific physics properties
+- Collision detection and response
+
+### Visual Effects
+- Custom particle systems for wind and weather
+- Environment-specific textures and colors
+- Dynamic lighting and atmospheric effects
+
+## Usage
+
+### Selecting Environments
+```swift
+// Set environment through GameManager
+GameManager.shared.setEnvironment(type: .meadow)
+
+// Check available environments
+let availableEnvironments = GameManager.shared.getAvailableEnvironments()
+
+// Check if environment is unlocked
+let isUnlocked = Environment.EnvironmentType.mountains.isUnlocked
+```
+
+### Customizing Environments
+```swift
+// Create custom environment
+let environment = Environment(type: .beach)
+environment.weatherCondition = .strongWind
+
+// Add custom obstacles
+let obstacle = Obstacle(type: .palmTree)
+obstacle.position(at: CGPoint(x: 100, y: 100))
+
+// Add collectibles
+let collectible = Collectible(type: .star)
+collectible.position(at: CGPoint(x: 200, y: 200))
+```
+
+## Asset Requirements
+
+### Textures
+- Background textures for each environment
+- Ground textures
+- Obstacle textures
+- Collectible textures
+- Particle effect textures
+
+### Audio
+- Environment-specific ambient sounds
+- Weather effect sounds
+- Collision sounds
+- Collection sounds
+
+## Contributing
+When adding new environments:
+1. Add the environment type to `EnvironmentType`
+2. Create configuration method in `Environment`
+3. Add required assets
+4. Update unlock requirements in `GameConfig`
+5. Test with all game modes 

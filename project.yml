@@ -1,0 +1,56 @@
+name: Tiny Pilots
+options:
+  minimumXcodeGenVersion: 2.41.0
+  deploymentTarget:
+    iOS: 17.0
+targets:
+  Tiny Pilots:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Tiny Pilots
+        excludes:
+          - "**/*.md"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: GrinSolve.Tiny-Pilots
+        INFOPLIST_FILE: Tiny Pilots/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: 17.0
+        SWIFT_VERSION: 5.0
+    scheme:
+      testTargets:
+        - Tiny PilotsTests
+      gatherCoverageData: true
+  Tiny PilotsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tiny PilotsTests
+        excludes:
+          - "**/*.md"
+    settings:
+      base:
+        INFOPLIST_FILE: Tiny PilotsTests/Info.plist
+        IPHONEOS_DEPLOYMENT_TARGET: 17.0
+        SWIFT_VERSION: 5.0
+    dependencies:
+      - target: Tiny Pilots
+  Tiny PilotsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tiny PilotsUITests
+    settings:
+      base:
+        INFOPLIST_FILE: Tiny PilotsUITests/Info.plist
+        IPHONEOS_DEPLOYMENT_TARGET: 17.0
+        SWIFT_VERSION: 5.0
+    dependencies:
+      - target: Tiny Pilots
+fileGroups:
+  - Tiny Pilots
+  - Tiny PilotsTests
+  - Tiny PilotsUITests
+

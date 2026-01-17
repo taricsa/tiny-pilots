@@ -7,335 +7,100 @@
 
 import SpriteKit
 
-/// Represents a game environment with its unique properties and visual elements
-class Environment {
-    
+/// Represents a game environment with its specific characteristics and visual elements
+final class GameEnvironment: SKNode {
     // MARK: - Types
-    
-    /// Defines the different types of environments available in the game
-    enum EnvironmentType: Int, CaseIterable {
-        case meadow = 0
-        case mountains = 1
-        case beach = 2
-        case city = 3
-        case canyon = 4
+    enum EnvironmentType: String, CaseIterable, Codable {
+        case meadow = "Sunny Meadows"
+        case alpine = "Alpine Heights"
+        case coastal = "Coastal Breeze"
+        case urban = "Urban Skyline"
+        case desert = "Desert Canyon"
         
-        /// The name of the environment for display
         var displayName: String {
-            switch self {
-            case .meadow: return "Sunny Meadows"
-            case .mountains: return "Alpine Heights"
-            case .beach: return "Coastal Breeze"
-            case .city: return "Urban Skyline"
-            case .canyon: return "Desert Canyon"
-            }
-        }
-        
-        /// The level required to unlock this environment
-        var unlockLevel: Int {
-            return GameConfig.Environments.environmentUnlockLevels[self.rawValue]
-        }
-        
-        /// Whether this environment is unlocked for the current player
-        var isUnlocked: Bool {
-            return GameManager.shared.playerData.level >= unlockLevel
-        }
-    }
-    
-    /// Defines the weather conditions for an environment
-    enum WeatherCondition {
-        case clear
-        case lightWind
-        case strongWind
-        case variable
-        
-        /// Get a random wind strength based on the weather condition
-        var windStrengthRange: ClosedRange<CGFloat> {
-            switch self {
-            case .clear: return 0.0...10.0
-            case .lightWind: return 10.0...25.0
-            case .strongWind: return 25.0...50.0
-            case .variable: return 0.0...50.0
-            }
+            return self.rawValue
         }
     }
     
     // MARK: - Properties
-    
-    /// The type of environment
     let type: EnvironmentType
+    let size: CGSize
     
-    /// The current weather condition in this environment
-    var weatherCondition: WeatherCondition
-    
-    /// The background color for the sky
-    var skyColor: SKColor
-    
-    /// The color of the ground
-    var groundColor: SKColor
-    
-    /// The texture to use for the ground
-    var groundTexture: SKTexture?
-    
-    /// The texture to use for the background
-    var backgroundTexture: SKTexture?
-    
-    /// The parallax layers for this environment
-    var parallaxLayers: [ParallaxLayer] = []
-    
-    /// The obstacle types available in this environment
-    var obstacleTypes: [ObstacleType] = []
-    
-    /// The collectible types available in this environment
-    var collectibleTypes: [CollectibleType] = []
-    
-    /// The ambient sound for this environment
-    var ambientSound: String?
-    
-    // MARK: - Initialization
-    
-    /// Initialize a new environment with the specified type
-    init(type: EnvironmentType) {
-        self.type = type
-        
-        // Set default weather condition
-        self.weatherCondition = .clear
-        
-        // Set default colors
-        self.skyColor = .blue
-        self.groundColor = .green
-        
-        // Configure environment based on type
-        configureEnvironment()
+    // MARK: - Static Environment Configurations
+    static func meadow(size: CGSize) -> GameEnvironment {
+        return GameEnvironment(type: .meadow, size: size)
     }
     
-    // MARK: - Configuration
+    static func alpine(size: CGSize) -> GameEnvironment {
+        return GameEnvironment(type: .alpine, size: size)
+    }
     
-    /// Configure the environment based on its type
-    private func configureEnvironment() {
+    static func coastal(size: CGSize) -> GameEnvironment {
+        return GameEnvironment(type: .coastal, size: size)
+    }
+    
+    static func urban(size: CGSize) -> GameEnvironment {
+        return GameEnvironment(type: .urban, size: size)
+    }
+    
+    static func desert(size: CGSize) -> GameEnvironment {
+        return GameEnvironment(type: .desert, size: size)
+    }
+    
+    // MARK: - Initialization
+    init(type: EnvironmentType, size: CGSize) {
+        self.type = type
+        self.size = size
+        super.init()
+        setupEnvironment()
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    // MARK: - Setup
+    private func setupEnvironment() {
+        // Setup environment based on type
         switch type {
         case .meadow:
-            configureMeadowEnvironment()
-        case .mountains:
-            configureMountainEnvironment()
-        case .beach:
-            configureBeachEnvironment()
-        case .city:
-            configureCityEnvironment()
-        case .canyon:
-            configureCanyonEnvironment()
+            setupMeadowEnvironment()
+        case .alpine:
+            setupAlpineEnvironment()
+        case .coastal:
+            setupCoastalEnvironment()
+        case .urban:
+            setupUrbanEnvironment()
+        case .desert:
+            setupDesertEnvironment()
         }
     }
     
-    /// Configure the meadow environment
-    private func configureMeadowEnvironment() {
-        // Set weather condition
-        weatherCondition = .lightWind
-        
-        // Set colors
-        skyColor = SKColor(red: 0.4, green: 0.7, blue: 0.9, alpha: 1.0)
-        groundColor = SKColor(red: 0.3, green: 0.8, blue: 0.2, alpha: 1.0)
-        
-        // Set textures
-        groundTexture = SKTexture(imageNamed: "grass_texture")
-        backgroundTexture = SKTexture(imageNamed: "meadow_background")
-        
-        // Set parallax layers
-        parallaxLayers = [
-            ParallaxLayer(textureName: "clouds", scrollSpeed: 0.1, zPosition: -9),
-            ParallaxLayer(textureName: "distant_hills", scrollSpeed: 0.3, zPosition: -8),
-            ParallaxLayer(textureName: "trees", scrollSpeed: 0.5, zPosition: -7)
-        ]
-        
-        // Set obstacle types
-        obstacleTypes = [
-            ObstacleType.tree,
-            ObstacleType.rock,
-            ObstacleType.fence
-        ]
-        
-        // Set collectible types
-        collectibleTypes = [
-            CollectibleType.star,
-            CollectibleType.coin
-        ]
-        
-        // Set ambient sound
-        ambientSound = "meadow_ambient"
+    private func setupMeadowEnvironment() {
+        // Implementation for meadow environment
     }
     
-    /// Configure the mountain environment
-    private func configureMountainEnvironment() {
-        // Set weather condition
-        weatherCondition = .strongWind
-        
-        // Set colors
-        skyColor = SKColor(red: 0.3, green: 0.5, blue: 0.8, alpha: 1.0)
-        groundColor = SKColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1.0)
-        
-        // Set textures
-        groundTexture = SKTexture(imageNamed: "mountain_texture")
-        backgroundTexture = SKTexture(imageNamed: "mountain_background")
-        
-        // Set parallax layers
-        parallaxLayers = [
-            ParallaxLayer(textureName: "clouds", scrollSpeed: 0.1, zPosition: -9),
-            ParallaxLayer(textureName: "distant_mountains", scrollSpeed: 0.2, zPosition: -8),
-            ParallaxLayer(textureName: "mountain_ridge", scrollSpeed: 0.4, zPosition: -7)
-        ]
-        
-        // Set obstacle types
-        obstacleTypes = [
-            ObstacleType.mountain,
-            ObstacleType.rock,
-            ObstacleType.snowdrift
-        ]
-        
-        // Set collectible types
-        collectibleTypes = [
-            CollectibleType.star,
-            CollectibleType.gem
-        ]
-        
-        // Set ambient sound
-        ambientSound = "mountain_ambient"
+    private func setupAlpineEnvironment() {
+        // Implementation for alpine environment
     }
     
-    /// Configure the beach environment
-    private func configureBeachEnvironment() {
-        // Set weather condition
-        weatherCondition = .variable
-        
-        // Set colors
-        skyColor = SKColor(red: 0.4, green: 0.7, blue: 1.0, alpha: 1.0)
-        groundColor = SKColor(red: 0.9, green: 0.8, blue: 0.6, alpha: 1.0)
-        
-        // Set textures
-        groundTexture = SKTexture(imageNamed: "sand_texture")
-        backgroundTexture = SKTexture(imageNamed: "beach_background")
-        
-        // Set parallax layers
-        parallaxLayers = [
-            ParallaxLayer(textureName: "clouds", scrollSpeed: 0.1, zPosition: -9),
-            ParallaxLayer(textureName: "ocean", scrollSpeed: 0.2, zPosition: -8),
-            ParallaxLayer(textureName: "palm_trees", scrollSpeed: 0.5, zPosition: -7)
-        ]
-        
-        // Set obstacle types
-        obstacleTypes = [
-            ObstacleType.palmTree,
-            ObstacleType.umbrella,
-            ObstacleType.sandcastle
-        ]
-        
-        // Set collectible types
-        collectibleTypes = [
-            CollectibleType.star,
-            CollectibleType.shell
-        ]
-        
-        // Set ambient sound
-        ambientSound = "beach_ambient"
+    private func setupCoastalEnvironment() {
+        // Implementation for coastal environment
     }
     
-    /// Configure the city environment
-    private func configureCityEnvironment() {
-        // Set weather condition
-        weatherCondition = .variable
-        
-        // Set colors
-        skyColor = SKColor(red: 0.3, green: 0.5, blue: 0.7, alpha: 1.0)
-        groundColor = SKColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0)
-        
-        // Set textures
-        groundTexture = SKTexture(imageNamed: "concrete_texture")
-        backgroundTexture = SKTexture(imageNamed: "city_background")
-        
-        // Set parallax layers
-        parallaxLayers = [
-            ParallaxLayer(textureName: "clouds", scrollSpeed: 0.1, zPosition: -9),
-            ParallaxLayer(textureName: "distant_buildings", scrollSpeed: 0.3, zPosition: -8),
-            ParallaxLayer(textureName: "skyscrapers", scrollSpeed: 0.5, zPosition: -7)
-        ]
-        
-        // Set obstacle types
-        obstacleTypes = [
-            ObstacleType.building,
-            ObstacleType.antenna,
-            ObstacleType.billboard
-        ]
-        
-        // Set collectible types
-        collectibleTypes = [
-            CollectibleType.star,
-            CollectibleType.coin
-        ]
-        
-        // Set ambient sound
-        ambientSound = "city_ambient"
+    private func setupUrbanEnvironment() {
+        // Implementation for urban environment
     }
     
-    /// Configure the canyon environment
-    private func configureCanyonEnvironment() {
-        // Set weather condition
-        weatherCondition = .strongWind
-        
-        // Set colors
-        skyColor = SKColor(red: 0.8, green: 0.7, blue: 0.5, alpha: 1.0)
-        groundColor = SKColor(red: 0.8, green: 0.5, blue: 0.3, alpha: 1.0)
-        
-        // Set textures
-        groundTexture = SKTexture(imageNamed: "canyon_texture")
-        backgroundTexture = SKTexture(imageNamed: "canyon_background")
-        
-        // Set parallax layers
-        parallaxLayers = [
-            ParallaxLayer(textureName: "clouds", scrollSpeed: 0.1, zPosition: -9),
-            ParallaxLayer(textureName: "distant_mesas", scrollSpeed: 0.2, zPosition: -8),
-            ParallaxLayer(textureName: "canyon_walls", scrollSpeed: 0.4, zPosition: -7)
-        ]
-        
-        // Set obstacle types
-        obstacleTypes = [
-            ObstacleType.mesa,
-            ObstacleType.cactus,
-            ObstacleType.rock
-        ]
-        
-        // Set collectible types
-        collectibleTypes = [
-            CollectibleType.star,
-            CollectibleType.gem
-        ]
-        
-        // Set ambient sound
-        ambientSound = "canyon_ambient"
-    }
-    
-    // MARK: - Helper Methods
-    
-    /// Get a random wind direction and strength based on the environment's weather condition
-    func getRandomWind() -> (direction: CGFloat, strength: CGFloat) {
-        let direction = CGFloat.random(in: 0...360)
-        let strength = CGFloat.random(in: weatherCondition.windStrengthRange)
-        return (direction, strength)
-    }
-    
-    /// Get a random obstacle type for this environment
-    func getRandomObstacleType() -> ObstacleType {
-        return obstacleTypes.randomElement() ?? .rock
-    }
-    
-    /// Get a random collectible type for this environment
-    func getRandomCollectibleType() -> CollectibleType {
-        return collectibleTypes.randomElement() ?? .star
+    private func setupDesertEnvironment() {
+        // Implementation for desert environment
     }
 }
 
 // MARK: - Supporting Types
 
 /// Represents a parallax scrolling layer in the environment
-struct ParallaxLayer {
+struct ParallaxLayer: Codable {
     let textureName: String
     let scrollSpeed: CGFloat
     let zPosition: CGFloat
@@ -349,7 +114,7 @@ struct ParallaxLayer {
 }
 
 /// Defines the different types of obstacles in the game
-enum ObstacleType {
+enum ObstacleType: String, CaseIterable, Codable {
     case tree
     case rock
     case fence
@@ -404,7 +169,7 @@ enum ObstacleType {
 }
 
 /// Defines the different types of collectibles in the game
-enum CollectibleType {
+enum CollectibleType: String, CaseIterable, Codable {
     case star
     case coin
     case gem
