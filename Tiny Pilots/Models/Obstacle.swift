@@ -30,7 +30,7 @@ class Obstacle {
         // Create sprite node with texture, fallback to colored rectangle if texture missing
         self.node = SKSpriteNode.safeSprite(
             imageNamed: type.textureName,
-            fallbackColor: .red,
+            fallbackColor: UIColor.red,
             size: type.size
         )
         self.node.name = "obstacle_\(type)"
