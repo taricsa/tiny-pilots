@@ -27,3 +27,17 @@ extension SKSpriteNode {
         return sprite
     }
 }
+
+extension SKTexture {
+    /// Creates a texture with safe asset loading
+    /// - Parameter name: Name of the image asset to load
+    /// - Returns: A texture if the image exists, nil otherwise
+    static func safeTexture(imageNamed name: String) -> SKTexture? {
+        if UIImage(named: name) != nil {
+            return SKTexture(imageNamed: name)
+        }
+        // Asset not found - return nil to allow caller to handle gracefully
+        print("Warning: Texture asset not found: \(name)")
+        return nil
+    }
+}

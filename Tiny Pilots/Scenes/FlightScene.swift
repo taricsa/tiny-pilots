@@ -339,7 +339,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     private func pauseGame() {
         if GameManager.shared.currentState.status == .playing {
             GameManager.shared.pauseGame()
-            isPaused = true
+            // Note: isPaused is managed by SKScene and synced via GameManager
             
             // Show pause menu
             showPauseMenu()
@@ -349,7 +349,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     private func resumeGame() {
         if GameManager.shared.currentState.status == .paused {
             GameManager.shared.resumeGame()
-            isPaused = false
+            // Note: isPaused is managed by SKScene and synced via GameManager
         }
     }
     
@@ -377,7 +377,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
                 
                 // Submit score
                 GameCenterManager.shared.submitScore(
-                    Int(GameManager.shared.distanceTraveled),
+                    Int(GameManager.shared.currentState.distance),
                     to: leaderboardID,
                     completion: { error in
                         if let error = error {
@@ -422,21 +422,21 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         
         let scoreDisplay = createStatDisplay(
             title: "Score",
-            value: "\(GameManager.shared.score)",
+            value: "\(GameManager.shared.currentState.score)",
             position: CGPoint(x: 0, y: 40)
         )
         statsContainer.addChild(scoreDisplay)
         
         let distanceDisplay = createStatDisplay(
             title: "Distance",
-            value: "\(Int(GameManager.shared.distanceTraveled))m",
+            value: "\(Int(GameManager.shared.currentState.distance))m",
             position: CGPoint(x: 0, y: 0)
         )
         statsContainer.addChild(distanceDisplay)
         
         let timeDisplay = createStatDisplay(
             title: "Time",
-            value: "\(Int(GameManager.shared.gameTime))s",
+            value: "\(Int(GameManager.shared.currentState.timeElapsed))s",
             position: CGPoint(x: 0, y: -40)
         )
         statsContainer.addChild(timeDisplay)
@@ -566,27 +566,27 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         
         let scoreDisplay = createStatDisplay(
             title: "Final Score",
-            value: "\(GameManager.shared.score)",
+            value: "\(GameManager.shared.currentState.score)",
             position: CGPoint(x: 0, y: 40)
         )
         statsContainer.addChild(scoreDisplay)
         
         let distanceDisplay = createStatDisplay(
             title: "Distance",
-            value: "\(Int(GameManager.shared.distanceTraveled))m",
+            value: "\(Int(GameManager.shared.currentState.distance))m",
             position: CGPoint(x: 0, y: 0)
         )
         statsContainer.addChild(distanceDisplay)
         
         let timeDisplay = createStatDisplay(
             title: "Flight Time",
-            value: "\(Int(GameManager.shared.gameTime))s",
+            value: "\(Int(GameManager.shared.currentState.timeElapsed))s",
             position: CGPoint(x: 0, y: -40)
         )
         statsContainer.addChild(timeDisplay)
         
         // Add high score indicator if applicable
-        if GameManager.shared.score > GameManager.shared.playerData.highScore {
+        if GameManager.shared.currentState.score > GameManager.shared.playerData.highScore {
             let newHighScoreLabel = SKLabelNode(fontNamed: "Helvetica-Bold")
             newHighScoreLabel.text = "New High Score!"
             newHighScoreLabel.fontSize = 20
@@ -777,30 +777,30 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     }
     
     private func updateUI() {
-        // Update score label
-        scoreLabel?.text = "Score: \(GameManager.shared.score)"
+        // Update score label - use currentState for single source of truth
+        scoreLabel?.text = "Score: \(GameManager.shared.currentState.score)"
         
         // Update distance label
-        distanceLabel?.text = "Distance: \(Int(GameManager.shared.distanceTraveled))m"
+        distanceLabel?.text = "Distance: \(Int(GameManager.shared.currentState.distance))m"
         
         // Update time label
-        timeLabel?.text = "Time: \(Int(GameManager.shared.gameTime))s"
+        timeLabel?.text = "Time: \(Int(GameManager.shared.currentState.timeElapsed))s"
         
         // Check if challenge goals are met
         if GameManager.shared.currentMode == .challenge {
             if let challengeDistance = challengeDistance, 
-               Int(GameManager.shared.distanceTraveled) >= challengeDistance {
+               Int(GameManager.shared.currentState.distance) >= challengeDistance {
                 // Challenge distance goal met
                 challengeInfoLabel?.fontColor = .green
                 
                 // End game if both goals are met
                 if let challengeTime = challengeTime, 
-                   Int(GameManager.shared.gameTime) <= challengeTime {
+                   Int(GameManager.shared.currentState.timeElapsed) <= challengeTime {
                     // Both goals met - challenge completed
                     completeChallenge()
                 }
             } else if let challengeTime = challengeTime, 
-                      Int(GameManager.shared.gameTime) > challengeTime {
+                      Int(GameManager.shared.currentState.timeElapsed) > challengeTime {
                 // Time limit exceeded
                 challengeInfoLabel?.fontColor = .red
                 
@@ -1031,7 +1031,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
     
     // Method to share score
     private func shareScore() {
-        print("Sharing score: \(GameManager.shared.score)")
+        print("Sharing score: \(GameManager.shared.currentState.score)")
         
         // Pause the game if playing
         if GameManager.shared.currentState.status == .playing {
@@ -1039,7 +1039,7 @@ class FlightScene: SKScene, SKPhysicsContactDelegate {
         }
         
         // Prepare the text to share
-        let shareText = "I scored \(GameManager.shared.score) points and traveled \(Int(GameManager.shared.distanceTraveled))m in Tiny Pilots!"
+        let shareText = "I scored \(GameManager.shared.currentState.score) points and traveled \(Int(GameManager.shared.currentState.distance))m in Tiny Pilots!"
         
         // Create activity view controller for sharing
         let activityViewController = UIActivityViewController(

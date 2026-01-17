@@ -80,20 +80,22 @@ class Collectible {
             let spin = SKAction.rotate(byAngle: .pi * 2, duration: 3.0)
             node.run(SKAction.repeatForever(spin))
             
-            // Add sparkle effect
-            let sparkle = SKEmitterNode()
-            sparkle.particleTexture = SKTexture(imageNamed: "sparkle")
-            sparkle.particleBirthRate = 2.0
-            sparkle.particleLifetime = 1.0
-            sparkle.particleScale = 0.2
-            sparkle.particleScaleRange = 0.1
-            sparkle.particleAlpha = 0.8
-            sparkle.particleAlphaRange = 0.2
-            sparkle.particleSpeed = 10.0
-            sparkle.particleSpeedRange = 5.0
-            sparkle.emissionAngle = 0
-            sparkle.emissionAngleRange = .pi * 2
-            node.addChild(sparkle)
+            // Add sparkle effect (only if texture exists)
+            if let sparkleTexture = SKTexture.safeTexture(imageNamed: "sparkle") {
+                let sparkle = SKEmitterNode()
+                sparkle.particleTexture = sparkleTexture
+                sparkle.particleBirthRate = 2.0
+                sparkle.particleLifetime = 1.0
+                sparkle.particleScale = 0.2
+                sparkle.particleScaleRange = 0.1
+                sparkle.particleAlpha = 0.8
+                sparkle.particleAlphaRange = 0.2
+                sparkle.particleSpeed = 10.0
+                sparkle.particleSpeedRange = 5.0
+                sparkle.emissionAngle = 0
+                sparkle.emissionAngleRange = .pi * 2
+                node.addChild(sparkle)
+            }
             
         case .coin:
             // Coins spin quickly
@@ -145,23 +147,31 @@ class Collectible {
         
         isCollected = true
         
-        // Create collection effect
-        let collectEffect = SKEmitterNode()
-        collectEffect.particleTexture = SKTexture(imageNamed: "sparkle")
-        collectEffect.particleBirthRate = 20
-        collectEffect.particleLifetime = 0.5
-        collectEffect.particleScale = 0.3
-        collectEffect.particleScaleRange = 0.2
-        collectEffect.particleAlpha = 0.8
-        collectEffect.particleSpeed = 50.0
-        collectEffect.particleSpeedRange = 20.0
-        collectEffect.emissionAngle = 0
-        collectEffect.emissionAngleRange = .pi * 2
-        collectEffect.numParticlesToEmit = 20
-        
-        // Position effect at collectible's position
-        collectEffect.position = node.position
-        node.parent?.addChild(collectEffect)
+        // Create collection effect (only if texture exists)
+        if let sparkleTexture = SKTexture.safeTexture(imageNamed: "sparkle") {
+            let collectEffect = SKEmitterNode()
+            collectEffect.particleTexture = sparkleTexture
+            collectEffect.particleBirthRate = 20
+            collectEffect.particleLifetime = 0.5
+            collectEffect.particleScale = 0.3
+            collectEffect.particleScaleRange = 0.2
+            collectEffect.particleAlpha = 0.8
+            collectEffect.particleSpeed = 50.0
+            collectEffect.particleSpeedRange = 20.0
+            collectEffect.emissionAngle = 0
+            collectEffect.emissionAngleRange = .pi * 2
+            collectEffect.numParticlesToEmit = 20
+            
+            // Position effect at collectible's position
+            collectEffect.position = node.position
+            node.parent?.addChild(collectEffect)
+            
+            // Remove effect node after animation
+            collectEffect.run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.5),
+                SKAction.removeFromParent()
+            ]))
+        }
         
         // Remove collectible with scale and fade animation
         let collect = SKAction.group([
@@ -171,12 +181,6 @@ class Collectible {
         
         node.run(SKAction.sequence([
             collect,
-            SKAction.removeFromParent()
-        ]))
-        
-        // Remove effect node after animation
-        collectEffect.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.5),
             SKAction.removeFromParent()
         ]))
         
